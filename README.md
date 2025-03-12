@@ -342,6 +342,24 @@ poetry add "matplotlib<3.10"
 poetry add "importlib-resources<6.0.0"
 ```
 
+## Citation
+
+If you use ZeroTune in your research or work, please cite:
+
+```bibtex
+@InProceedings{zt1_salhi_2025,
+  author    = "Salhi, Tarek and Woodward, John",
+  editor    = "Nicosia, Giuseppe and Ojha, Varun and Giesselbach, Sven and Pardalos, M. Panos and Umeton, Renato",
+  title     = "Beyond Iterative Tuning: Zero-Shot Hyperparameter Optimisation for Decision Trees",
+  booktitle = "Machine Learning, Optimization, and Data Science",
+  year      = "2025",
+  publisher = "Springer Nature Switzerland",
+  address   = "Cham",
+  pages     = "359--374",
+  isbn      = "978-3-031-82481-4"
+}
+```
+
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details. 
