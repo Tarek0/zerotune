@@ -279,8 +279,17 @@ python zerotune/examples/inference_example.py
 # Run the knowledge base example
 python zerotune/examples/knowledge_base_example.py
 
-# Run the prediction and visualization example
-python use_zerotune_predictor.py
+# Run the custom model example with visualization
+python zerotune/examples/custom_model_example.py
+
+# Run the advanced visualization example
+python zerotune/examples/visualization_example.py
+
+# Run the simple demonstration
+python zerotune/examples/simple_example.py
+
+# Show how Poetry simplifies package management
+python zerotune/examples/poetry_example.py
 ```
 
 ## Running Tests
@@ -297,11 +306,25 @@ poetry run pytest
 # Run tests with coverage report
 poetry run pytest --cov=zerotune
 
-# Run a specific test file
-poetry run pytest tests/test_zerotune_core.py
+# Run specific test categories
+poetry run pytest tests/test_zerotune_core.py  # Core functionality tests
+poetry run pytest tests/test_integration.py    # Integration tests
+poetry run pytest tests/test_environment.py    # Environment validation tests
+
+# Run tests with specific markers
+poetry run pytest -m "integration"  # Run only integration tests
+poetry run pytest -m "not slow"     # Skip slow tests
 ```
 
-For more information about the tests, see the [tests/README.md](tests/README.md) file.
+The test suite includes:
+
+- **Unit tests**: Verify individual components function correctly
+- **Integration tests**: Test complete workflows from knowledge base to prediction
+- **Edge case tests**: Test behavior with empty datasets, single rows, high-dimensional data
+- **Parameterized tests**: Test multiple configurations with the same test logic
+- **Environment tests**: Validate Python version and dependency compatibility
+
+For more details about the testing framework and available tests, see the [tests/README.md](tests/README.md) file.
 
 ## Contributing
 

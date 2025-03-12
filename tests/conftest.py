@@ -40,6 +40,87 @@ def small_regression_dataset():
 
 
 @pytest.fixture
+def empty_dataset():
+    """
+    Fixture that creates an empty dataset for edge case testing.
+    
+    This fixture creates a DataFrame and Series with 0 rows to test
+    how functions handle empty data.
+    """
+    columns = [f'feature_{i}' for i in range(5)]
+    X = pd.DataFrame(columns=columns)
+    y = pd.Series([], name='target')
+    return X, y
+
+
+@pytest.fixture
+def single_row_dataset():
+    """
+    Fixture that creates a dataset with only one row for edge case testing.
+    
+    This is useful for testing minimum dataset size requirements and
+    statistical calculations that typically need more than one data point.
+    """
+    X = pd.DataFrame([[0.1, 0.2, 0.3, 0.4, 0.5]], columns=[f'feature_{i}' for i in range(5)])
+    y = pd.Series([1], name='target')
+    return X, y
+
+
+@pytest.fixture
+def high_dimensional_dataset():
+    """
+    Fixture that creates a high-dimensional dataset (many features).
+    
+    This helps test the system's capability to handle datasets with a large
+    number of features, which can challenge computational efficiency and
+    potentially reveal scaling issues.
+    """
+    X, y = make_classification(
+        n_samples=50,
+        n_features=100,  # High number of features
+        n_informative=10,
+        n_redundant=20,
+        n_repeated=5,
+        n_classes=2,
+        random_state=42
+    )
+    return pd.DataFrame(X, columns=[f'feature_{i}' for i in range(X.shape[1])]), pd.Series(y, name='target')
+
+
+@pytest.fixture
+def all_categorical_dataset():
+    """
+    Fixture that creates a dataset with all categorical features.
+    
+    This tests the system's ability to handle categorical data appropriately.
+    The dataset includes both binary and multi-category features.
+    """
+    # Create categorical data
+    n_samples = 100
+    np.random.seed(42)
+    
+    # Binary features
+    binary_features = np.random.randint(0, 2, size=(n_samples, 3))
+    
+    # Multi-category features
+    multi_cat1 = np.random.randint(0, 3, size=n_samples)
+    multi_cat2 = np.random.randint(0, 5, size=n_samples)
+    
+    # Combine features
+    X_data = np.column_stack([binary_features, multi_cat1.reshape(-1, 1), multi_cat2.reshape(-1, 1)])
+    
+    # Create DataFrame with categorical dtypes
+    X = pd.DataFrame(X_data, columns=['binary1', 'binary2', 'binary3', 'category3', 'category5'])
+    for col in X.columns:
+        X[col] = X[col].astype('category')
+    
+    # Create categorical target
+    y = pd.Series(np.random.randint(0, 2, size=n_samples), name='target').astype('category')
+    
+    return X, y
+
+
+@pytest.fixture
 def mock_dataset_meta_parameters():
     """Fixture that returns mock dataset meta parameters."""
     return {
