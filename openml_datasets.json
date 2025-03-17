@@ -1,12 +1,54 @@
 {
-  "40945": "iris",
-  "40981": "adult",
-  "40984": "banknote-authentication",
-  "61": "iris",
-  "40982": "climate-model-simulation-crashes",
-  "40983": "breast-cancer-wisconsin",
-  "40975": "car",
-  "40900": "electricity",
-  "40966": "credit-g",
-  "40536": "SpeedDating"
-} 
+  "binary": {
+    "40981": {
+      "name": "adult",
+      "classes": 2
+    },
+    "40984": {
+      "name": "banknote-authentication",
+      "classes": 2
+    },
+    "40982": {
+      "name": "climate-model-simulation-crashes",
+      "classes": 2
+    },
+    "40983": {
+      "name": "breast-cancer-wisconsin",
+      "classes": 2
+    },
+    "40900": {
+      "name": "electricity",
+      "classes": 2
+    },
+    "40966": {
+      "name": "credit-g",
+      "classes": 2
+    },
+    "40536": {
+      "name": "SpeedDating",
+      "classes": 2
+    },
+    "31": {
+      "name": "credit-g",
+      "classes": 2
+    },
+    "40994": {
+      "name": "climate-model-simulation-crashes",
+      "classes": 2
+    }
+  },
+  "multi-class": {
+    "40945": {
+      "name": "iris",
+      "classes": 3
+    },
+    "61": {
+      "name": "iris",
+      "classes": 3
+    },
+    "40975": {
+      "name": "car",
+      "classes": 4
+    }
+  }
+}

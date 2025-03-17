@@ -43,7 +43,10 @@ pip install -e .
 - Run hyperparameter optimization with Optuna
 - Evaluate models with random hyperparameters
 - Compare performance of different HPO strategies
-- **Ready-to-use pretrained models** for common algorithms
+- **Ready-to-use pretrained models** for common algorithms:
+  - Decision Tree Classifier
+  - Random Forest Classifier
+  - XGBoost Classifier
 - **Visualize performance improvements** with beautiful comparison charts
 
 ## Main Functionalities
@@ -58,6 +61,8 @@ ZeroTune has two main functionalities:
 ZeroTune comes with pretrained models for common machine learning algorithms:
 
 - **Decision Tree Classifier**: Predicts optimal values for max_depth, min_samples_split, min_samples_leaf, and max_features
+- **Random Forest Classifier**: Predicts optimal values for n_estimators, max_depth, min_samples_split, min_samples_leaf, and max_features
+- **XGBoost Classifier**: Predicts optimal values for n_estimators, max_depth, min_samples_split, min_samples_leaf, and max_features
 - More models coming soon!
 
 See [zerotune/models/README.md](zerotune/models/README.md) for detailed information about the pretrained models.
@@ -267,28 +272,31 @@ plt.show()
 
 ## Running the Examples
 
-From the repository root, after activating the Poetry environment:
+ZeroTune includes several example scripts to help you get started:
 
 ```bash
-# Test the pretrained model
+# Test the pre-trained model
 python zerotune/examples/test_pretrained_model.py
 
-# Run the inference example
+# Simple inference with pre-trained model
 python zerotune/examples/inference_example.py
 
-# Run the knowledge base example
+# Build a knowledge base and train a custom model
 python zerotune/examples/knowledge_base_example.py
 
-# Run the custom model example with visualization
+# Custom model training and evaluation
 python zerotune/examples/custom_model_example.py
 
-# Run the advanced visualization example
+# Compare performance of multiple model types (Decision Tree, Random Forest, XGBoost)
+python zerotune/examples/multi_model_example.py
+
+# Advanced visualization of hyperparameter performance
 python zerotune/examples/visualization_example.py
 
-# Run the simple demonstration
+# Basic functionality demonstration
 python zerotune/examples/simple_example.py
 
-# Show how Poetry simplifies package management
+# Poetry dependency management
 python zerotune/examples/poetry_example.py
 ```
 

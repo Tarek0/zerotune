@@ -1,57 +1,45 @@
-"""ZeroTune: A module for one-shot hyperparameter optimization."""
+"""
+ZeroTune: Automatic hyperparameter optimization using meta-learning.
 
-from .zerotune import (
-    # Dataset meta-features calculation
-    calculate_dataset_meta_parameters,
-    
-    # Hyperparameter transformation
-    relative2absolute_dict,
-    generate_random_params,
-    
-    # Model evaluation
-    evaluate_model,
-    
-    # HPO with Optuna
-    optuna_objective,
-    optuna_hpo,
-    
-    # Random hyperparameter evaluation
-    random_hyperparameter_evaluation,
-    
-    # ZeroTune training and prediction
-    train_zerotune_model,
-    predict_hyperparameters,
-    remove_param_prefix,
+ZeroTune is a Python package that optimizes hyperparameters for machine
+learning models by leveraging knowledge from similar datasets, effectively
+reducing the search space and optimization time.
+
+Usage example:
+```python
+from zerotune import ZeroTune
+import pandas as pd
+from sklearn.model_selection import train_test_split
+
+# Load dataset
+df = pd.read_csv('your_dataset.csv')
+X = df.drop('target', axis=1)
+y = df['target']
+
+# Initialize ZeroTune with model type
+zt = ZeroTune(model_type='decision_tree')
+
+# Optimize hyperparameters and get the best model
+best_params, best_score, model = zt.optimize(X, y)
+```
+"""
+
+from zerotune.core import (
+    ZeroTune,
+    ModelConfigs,
+    fetch_open_ml_data,
+    prepare_data,
+    get_dataset_ids,
+    get_recommended_datasets
 )
 
-# Knowledge Base for offline training
-from .knowledge_base import KnowledgeBase
-
-# Pre-trained predictors for inference
-from .predictors import (
-    get_available_models,
-    ZeroTunePredictor,
-    CustomZeroTunePredictor
-)
+__version__ = '0.1.0'
 
 __all__ = [
-    # Core functionality
-    'calculate_dataset_meta_parameters',
-    'relative2absolute_dict',
-    'generate_random_params',
-    'evaluate_model',
-    'optuna_objective',
-    'optuna_hpo',
-    'random_hyperparameter_evaluation',
-    'train_zerotune_model',
-    'predict_hyperparameters',
-    'remove_param_prefix',
-    
-    # Knowledge Base
-    'KnowledgeBase',
-    
-    # Predictors
-    'get_available_models',
-    'ZeroTunePredictor',
-    'CustomZeroTunePredictor',
+    'ZeroTune',
+    'ModelConfigs',
+    'fetch_open_ml_data',
+    'prepare_data',
+    'get_dataset_ids',
+    'get_recommended_datasets'
 ] 

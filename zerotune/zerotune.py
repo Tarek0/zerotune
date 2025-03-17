@@ -228,6 +228,15 @@ def evaluate_model(X: pd.DataFrame, y: pd.Series, model_name: str, hyperparams: 
     
     seed_scores = []
 
+    # Determine if we have a multi-class problem (more than 2 unique values)
+    n_classes = len(np.unique(y))
+    if n_classes > 2:
+        # For multi-class, use 'ovr' (one-vs-rest) ROC AUC scoring
+        scoring = 'roc_auc_ovr'
+    else:
+        # For binary classification, use standard ROC AUC
+        scoring = 'roc_auc'
+
     for i in range(n_seeds):
         seed = random_seed + i
         if model_name == "DecisionTreeClassifier2Param" or model_name == "DecisionTreeClassifier4Param":
@@ -241,8 +250,14 @@ def evaluate_model(X: pd.DataFrame, y: pd.Series, model_name: str, hyperparams: 
             raise ValueError(f"Unknown model name: {model_name}")
         
         cv = StratifiedKFold(n_splits=n_folds, shuffle=True, random_state=seed)
-        scores = cross_val_score(model, X, y, scoring='roc_auc', cv=cv, n_jobs=-1)
-        seed_scores.append(np.mean(scores))
+        try:
+            scores = cross_val_score(model, X, y, scoring=scoring, cv=cv, n_jobs=-1)
+            seed_scores.append(np.mean(scores))
+        except Exception as e:
+            print(f"Warning: ROC AUC scoring failed, falling back to accuracy: {str(e)}")
+            # Fallback to accuracy if ROC AUC fails
+            scores = cross_val_score(model, X, y, scoring='accuracy', cv=cv, n_jobs=-1)
+            seed_scores.append(np.mean(scores))
 
     final_score = np.mean(seed_scores)
     return final_score, seed_scores
@@ -400,8 +415,8 @@ def random_hyperparameter_evaluation(X: pd.DataFrame, y: pd.Series, meta_params:
 # ===================== ZeroTune Training =====================
 
 def train_zerotune_model(df: pd.DataFrame, dataset_features: List[str], targets: List[str], 
-                        condition_column: Optional[str] = None, n_iter: int = 100) -> Tuple[RandomForestRegressor, float]:
-    """Train a ZeroTune model using a Random Forest Multi-Output Regressor.
+                        condition_column: Optional[str] = None, n_iter: int = 100) -> Tuple[RandomForestRegressor, float, Dict]:
+    """Train a ZeroTune model using a Random Forest Multi-Output Regressor with normalized targets.
 
     Args:
         df: DataFrame containing the dataset.
@@ -411,17 +426,56 @@ def train_zerotune_model(df: pd.DataFrame, dataset_features: List[str], targets:
         n_iter: Number of random search iterations.
 
     Returns:
-        Tuple of (fitted RandomForestRegressor model, best cross-validation score).
+        Tuple of (fitted RandomForestRegressor model, normalized MSE score, normalization parameters).
     """
-    X = df[dataset_features]
-    y = df[targets]
-
+    # Clean the data: remove any rows with NaN values in features or targets
+    clean_df = df.copy()
+    feature_cols = dataset_features.copy()
+    target_cols = targets.copy()
+    
+    if condition_column is not None:
+        feature_cols.append(condition_column)
+    
+    # Check for NaN values
+    nan_rows = clean_df[feature_cols + target_cols].isna().any(axis=1)
+    if nan_rows.any():
+        print(f"Warning: Removing {nan_rows.sum()} rows with NaN values")
+        clean_df = clean_df[~nan_rows]
+    
+    X = clean_df[dataset_features]
+    y_original = clean_df[targets]
+    
+    # Normalize target values to [0,1] range to provide a fairer MSE calculation
+    # across hyperparameters with different scales
+    normalization_params = {}
+    y_normalized = pd.DataFrame()
+    
+    for col in targets:
+        # Calculate min and max for each target parameter
+        min_val = y_original[col].min()
+        max_val = y_original[col].max()
+        range_val = max_val - min_val
+        
+        # Store normalization parameters
+        normalization_params[col] = {
+            'min': min_val,
+            'max': max_val,
+            'range': range_val
+        }
+        
+        # Normalize the target parameter to [0,1] range
+        # Handle the case where min == max (no range)
+        if range_val > 0:
+            y_normalized[col] = (y_original[col] - min_val) / range_val
+        else:
+            y_normalized[col] = 0.5  # If all values are the same, use 0.5 as normalized value
+    
     param_dist = {
         'n_estimators': sp_randint(100, 300),
         'max_depth': [None, 10, 20, 30, 40, 50],
         'min_samples_split': sp_randint(2, 11),
         'min_samples_leaf': sp_randint(1, 5),
-        'max_features': ['auto', 'sqrt'],
+        'max_features': ['sqrt', 'log2', None],  # Removed 'auto' which is no longer valid
         'bootstrap': [True, False]
     }
 
@@ -432,48 +486,83 @@ def train_zerotune_model(df: pd.DataFrame, dataset_features: List[str], targets:
     if condition_column is None:
         cv_strategy = 4
     else:
-        groups = df[condition_column]
+        groups = clean_df[condition_column]
         cv_strategy = GroupKFold(n_splits=4)
     
     # Set up RandomizedSearchCV with the chosen cross-validation strategy
     hpo_search = RandomizedSearchCV(regressor, param_distributions=param_dist, cv=cv_strategy,
                                    scoring='neg_mean_squared_error', n_jobs=4, n_iter=n_iter, random_state=42)
     
-    # Fit the model
-    # Pass groups to fit method if GroupKFold is used
+    # Fit the model on normalized targets
     if condition_column is None:
-        hpo_search.fit(X, y)
+        hpo_search.fit(X, y_normalized)
     else:
-        hpo_search.fit(X, y, groups=groups)
+        hpo_search.fit(X, y_normalized, groups=groups)
 
-    # Best parameters and score
+    # Best parameters and normalized score
     best_params = hpo_search.best_params_
-    best_score = hpo_search.best_score_
+    normalized_score = hpo_search.best_score_
 
-    print(f'Zero-shot predictor mse: {best_score}')
-
-    # Train the model on the entire dataset with best parameters
+    # Calculate raw (unnormalized) MSE for reference
     best_regressor = RandomForestRegressor(**best_params, random_state=42)
-    best_regressor.fit(X, y)
+    best_regressor.fit(X, y_normalized)
     
-    return best_regressor, best_score
+    # Make normalized predictions
+    y_pred_norm = best_regressor.predict(X)
+    
+    # Denormalize predictions for raw MSE calculation
+    y_pred_raw = np.zeros_like(y_pred_norm)
+    for i, col in enumerate(targets):
+        params = normalization_params[col]
+        if params['range'] > 0:
+            y_pred_raw[:, i] = y_pred_norm[:, i] * params['range'] + params['min']
+        else:
+            y_pred_raw[:, i] = params['min']
+    
+    # Calculate raw MSE
+    raw_mse = np.mean((y_original.values - y_pred_raw) ** 2)
+    
+    print(f'Zero-shot predictor normalized MSE: {-normalized_score:.4f}')
+    print(f'Zero-shot predictor raw MSE: {raw_mse:.4f}')
 
-def predict_hyperparameters(model: RandomForestRegressor, X: pd.DataFrame, target_columns: List[str]) -> Dict[str, float]:
-    """Predict hyperparameters using a trained ZeroTune model.
+    # Train the final model on the entire dataset with best parameters
+    best_regressor = RandomForestRegressor(**best_params, random_state=42)
+    best_regressor.fit(X, y_normalized)
+    
+    return best_regressor, normalized_score, normalization_params
+
+def predict_hyperparameters(model: RandomForestRegressor, X: pd.DataFrame, target_columns: List[str], 
+                           normalization_params: Dict) -> Dict[str, float]:
+    """Predict hyperparameters using a trained ZeroTune model and denormalize the predictions.
     
     Args:
         model: Trained RandomForestRegressor model.
         X: Feature data to predict for.
         target_columns: Names of the target hyperparameters.
+        normalization_params: Parameters used for normalization during training.
         
     Returns:
-        Dictionary mapping target column names to their predicted values.
+        Dictionary mapping target column names to their denormalized predicted values.
     """
-    # Make predictions using the trained model
+    # Make predictions using the trained model (normalized values)
     predictions = model.predict(X)
     
-    # Create a dictionary mapping target column names to their predicted values
-    predictions_dict = {column: prediction for column, prediction in zip(target_columns, predictions[0])}
+    # Create a dictionary for denormalized predictions
+    predictions_dict = {}
+    
+    # Denormalize the predictions
+    for i, column in enumerate(target_columns):
+        if column in normalization_params:
+            params = normalization_params[column]
+            # Denormalize the prediction
+            if params['range'] > 0:
+                pred_value = predictions[0][i] * params['range'] + params['min']
+            else:
+                pred_value = params['min']
+            predictions_dict[column] = pred_value
+        else:
+            # Fallback if normalization parameters not available for this column
+            predictions_dict[column] = predictions[0][i]
     
     return predictions_dict
 

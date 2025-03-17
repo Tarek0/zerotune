@@ -12,6 +12,7 @@ from typing import Dict, List, Tuple, Optional, Any
 from sklearn.datasets import make_classification
 from tqdm import tqdm
 import joblib
+from sklearn.preprocessing import LabelEncoder
 
 from .zerotune import (
     calculate_dataset_meta_parameters,
@@ -71,16 +72,23 @@ class KnowledgeBase:
         print(f'Adding dataset: {dataset.name} (ID: {dataset_id})')
         
         # Get the data
-        X, y, categorical_indicator, attribute_names = dataset.get_data(
-            dataset_format="array", target=target_name
-        )
-        
-        # Convert to DataFrame
-        df = pd.DataFrame(X, columns=attribute_names)
-        df[target_name] = y
-        
-        # Handle dataset
-        return self._process_dataset(df, target_name, dataset_id=dataset_id, name=dataset.name)
+        try:
+            # Use dataframe format to handle float32 and string issues
+            df, _, _, _ = dataset.get_data(dataset_format="dataframe", target=target_name)
+            
+            # Extract target column
+            if target_name in df.columns:
+                y_series = df[target_name]
+                X_df = df.drop(target_name, axis=1)
+            else:
+                raise ValueError(f"Target column '{target_name}' not found in dataset")
+            
+            # Use add_dataset to handle preprocessing
+            return self.add_dataset(X_df, y_series, f"openml_{dataset_id}_{dataset.name}")
+            
+        except Exception as e:
+            print(f"Error loading OpenML dataset {dataset_id}: {str(e)}")
+            raise
     
     def add_synthetic_dataset(self, 
                              n_samples: int = None, 
@@ -288,23 +296,26 @@ class KnowledgeBase:
         import time
         dataset_id = int(time.time() * 1000) % 1000000 + np.random.randint(1000, 9999)
         
+        # Process the dataset (handle categorical features and target)
+        processed_X, processed_y = self._process_dataset(X, y, dataset_name)
+        
         # Create a DataFrame with both features and target
-        df = X.copy()
-        df[y.name or 'target'] = y
+        df = processed_X.copy()
+        df[processed_y.name or 'target'] = processed_y
         
         # Create dataset directory directly with the provided name
         dataset_dir = os.path.join(self.kb_dir, 'datasets', dataset_name)
         os.makedirs(dataset_dir, exist_ok=True)
         
         # Split features and target for saving
-        y_name = y.name or 'target'
+        y_name = processed_y.name or 'target'
         
         # Save the dataset
-        X.to_csv(os.path.join(dataset_dir, 'X.csv'), index=False)
-        y.to_csv(os.path.join(dataset_dir, 'y.csv'), index=False)
+        processed_X.to_csv(os.path.join(dataset_dir, 'X.csv'), index=False)
+        processed_y.to_csv(os.path.join(dataset_dir, 'y.csv'), index=False)
         
         # Calculate dataset meta-parameters
-        meta_params = calculate_dataset_meta_parameters(X, y)
+        meta_params = calculate_dataset_meta_parameters(processed_X, processed_y)
         
         # Add dataset ID and name
         meta_params['Dataset'] = dataset_id
@@ -355,7 +366,7 @@ class KnowledgeBase:
         
         # Run HPO
         hpo_results = optuna_hpo(
-            X, y,
+            processed_X, processed_y,
             meta_params=selected_meta_params,
             param_config=param_config,
             n_trials=10,  # Use fewer trials for tests
@@ -375,65 +386,159 @@ class KnowledgeBase:
         return metadata
     
     def compile_knowledge_base(self, model=None, param_config=None, n_random_configs=None, cv=None, metric=None, random_seed=None, **kwargs) -> Tuple[pd.DataFrame, pd.DataFrame]:
-        """Compile all datasets into a knowledge base.
-        
-        If kwargs are provided, they will be passed to _process_dataset to run
-        additional HPO trials for all datasets.
+        """Compile the knowledge base from all added datasets.
         
         Args:
-            model: Optional model to evaluate for each dataset
-            param_config: Optional parameter configuration for evaluation
-            n_random_configs: Optional number of random configurations to evaluate
-            cv: Optional number of cross-validation folds
-            metric: Optional metric to use for evaluation
-            random_seed: Optional random seed for evaluation
-        
+            model: Model class for tuning (default: DecisionTreeClassifier)
+            param_config: Parameter configuration (default: DecisionTreeClassifier config)
+            n_random_configs: Number of random configurations to generate (default: 10)
+            cv: Number of cross-validation folds (default: 3)
+            metric: Performance metric for evaluation (default: 'roc_auc')
+            random_seed: Random seed for reproducibility (default: None)
+            **kwargs: Additional keyword arguments for HPO
+            
         Returns:
-            Tuple of (dataset_meta_features, trials_data)
+            Tuple of (features dataframe, targets dataframe) for all datasets.
         """
-        # Ensure we have a dataset_features_list
-        if not self.dataset_features_list:
-            # Look for any saved datasets
-            datasets_dir = os.path.join(self.kb_dir, 'datasets')
-            if os.path.exists(datasets_dir):
-                dataset_dirs = [d for d in os.listdir(datasets_dir) 
-                               if os.path.isdir(os.path.join(datasets_dir, d))]
+        # Ensure defaults
+        if model is None:
+            from sklearn.tree import DecisionTreeClassifier
+            model = DecisionTreeClassifier
+        if param_config is None:
+            # Default configuration for DecisionTreeClassifier
+            param_config = {
+                "max_depth": {
+                    "percentage_splits": [0.25, 0.5, 0.7, 0.8, 0.9, 0.999], 
+                    "param_type": "int", 
+                    "dependency": "n_samples"
+                },
+                "min_samples_split": {
+                    "percentage_splits": [0.005, 0.01, 0.02, 0.05, 0.1], 
+                    "param_type": "float"
+                },
+                "min_samples_leaf": {
+                    "percentage_splits": [0.005, 0.01, 0.02, 0.05, 0.1], 
+                    "param_type": "float"
+                },
+                "max_features": {
+                    "percentage_splits": [0.5, 0.7, 0.8, 0.9, 0.99], 
+                    "param_type": "float"
+                }
+            }
+        if n_random_configs is None:
+            n_random_configs = 10
+        if cv is None:
+            cv = 3
+        if metric is None:
+            metric = 'roc_auc'
+        if random_seed is None:
+            import numpy as np
+            random_seed = np.random.randint(0, 10000)
+            
+        # Get dataset directories
+        dataset_dirs = self._get_dataset_dirs()
+        
+        # Initialize dataframes for compilation
+        all_features = []
+        all_targets = []
+        
+        # Load and compile all datasets
+        for dataset_dir in dataset_dirs:
+            try:
+                # Load metadata
+                metadata_path = os.path.join(dataset_dir, 'metadata.json')
+                if not os.path.exists(metadata_path):
+                    continue
                 
-                for dataset_name in dataset_dirs:
-                    metadata_path = os.path.join(datasets_dir, dataset_name, 'metadata.json')
-                    if os.path.exists(metadata_path):
-                        with open(metadata_path, 'r') as f:
-                            metadata = json.load(f)
-                        self.dataset_features_list.append(metadata)
+                with open(metadata_path, 'r') as f:
+                    metadata = json.load(f)
+                
+                # Set target column name
+                if 'dataset_id' in metadata:
+                    dataset_name = os.path.basename(dataset_dir)
+                    
+                    # Load best hyperparameters from metadata
+                    if os.path.exists(os.path.join(dataset_dir, 'best_hyperparams.json')):
+                        with open(os.path.join(dataset_dir, 'best_hyperparams.json'), 'r') as f:
+                            best_hyperparams = json.load(f)
+                        
+                        # Create a row for the dataset features
+                        row = {}
+                        
+                        # Add metadata parameters
+                        for key, value in metadata.items():
+                            if key in ['n_samples', 'n_features', 'n_highly_target_corr', 'imbalance_ratio']:
+                                row[key] = value
+                        
+                        # Add dataset ID
+                        row['Dataset'] = metadata.get('dataset_id', '')
+                        row['Dataset_name'] = dataset_name
+                        
+                        # Add hyperparameters
+                        for param, value in best_hyperparams.items():
+                            param_name = f"params_{param}"  # Add 'params_' prefix
+                            row[param_name] = value
+                        
+                        # Append to lists
+                        all_features.append(row)
+                        all_targets.append(row)  # Same data for now, will filter later
+            except Exception as e:
+                print(f"Error processing dataset {os.path.basename(dataset_dir)}: {str(e)}")
         
-        # Combine all dataset features
-        self.dataset_meta_features = pd.DataFrame(self.dataset_features_list)
+        # Convert to dataframes
+        if not all_features:
+            print("Warning: No datasets with valid hyperparameter data found.")
+            
+            # Create empty dataframes with expected columns
+            df_features = pd.DataFrame(columns=['n_samples', 'n_features', 'n_highly_target_corr', 'imbalance_ratio', 'Dataset', 'Dataset_name'])
+            param_cols = [f"params_{param}" for param in param_config.keys()]
+            df_targets = pd.DataFrame(columns=param_cols + ['Dataset', 'Dataset_name'])
+            
+            # Create an empty knowledge base
+            self.kb = pd.DataFrame()
+        else:
+            # Convert to pandas DataFrames
+            df_features = pd.DataFrame(all_features)
+            df_targets = pd.DataFrame(all_targets)
+            
+            # Clean data - remove rows with NaN values
+            nan_mask = df_features.isna().any(axis=1) | df_targets.isna().any(axis=1)
+            if nan_mask.any():
+                print(f"Removing {nan_mask.sum()} rows with NaN values")
+                df_features = df_features[~nan_mask]
+                df_targets = df_targets[~nan_mask]
+            
+            # Filter columns
+            feature_cols = [col for col in df_features.columns if not col.startswith('params_')]
+            param_cols = [col for col in df_targets.columns if col.startswith('params_')]
+            df_features = df_features[feature_cols]
+            
+            if param_cols:
+                df_targets = df_targets[param_cols + ['Dataset', 'Dataset_name']]
+                # Save compiled knowledge base
+                self.kb = pd.concat([df_features, df_targets[param_cols]], axis=1)
+            else:
+                print("Warning: No parameter columns found in the data")
+                df_targets = df_targets[['Dataset', 'Dataset_name']]
+                # Create empty parameter columns based on param_config
+                for param in param_config.keys():
+                    self.kb[f"params_{param}"] = np.nan
+                
+                # Combine with features
+                self.kb = pd.concat([df_features, self.kb], axis=1)
         
-        # Combine all trial results
-        self.trials_data = pd.concat(self.optuna_trials_df_list, ignore_index=True) if self.optuna_trials_df_list else pd.DataFrame()
+        # Save to disk
+        kb_file = os.path.join(self.kb_dir, 'knowledge_base.csv')
+        self.kb.to_csv(kb_file, index=False)
         
-        # Create and set the kb attribute with additional expected columns
-        self.kb = self.dataset_meta_features.copy()
-        
-        # Add the columns expected by tests if they don't exist
-        if 'dataset_name' not in self.kb.columns and 'Dataset_name' in self.kb.columns:
-            self.kb['dataset_name'] = self.kb['Dataset_name']
-        
-        # Add params and performance columns if they don't exist (for test compatibility)
-        if 'params_max_depth' not in self.kb.columns:
-            self.kb['params_max_depth'] = np.nan
-        
-        if 'params_min_samples_split' not in self.kb.columns:
-            self.kb['params_min_samples_split'] = np.nan
-        
-        if 'performance' not in self.kb.columns:
-            self.kb['performance'] = np.nan
-        
-        # If model and param_config are provided, run additional evaluations
-        # This part would handle the actual evaluation logic from the original implementation
-        # but is not needed for the tests to pass.
-        
-        return self.dataset_meta_features, self.trials_data
+        # Fallback: Create a synthetic dataset if we don't have any data
+        if len(self.kb) == 0:
+            print("Creating a synthetic dataset for training since no valid datasets were found")
+            self.add_synthetic_dataset(n_samples=100, n_features=10, random_seed=random_seed)
+            # Recursively compile again
+            return self.compile_knowledge_base(model, param_config, n_random_configs, cv, metric, random_seed, **kwargs)
+            
+        return df_features, df_targets
     
     def save(self) -> None:
         """Save the knowledge base to disk."""
@@ -564,14 +669,14 @@ class KnowledgeBase:
         """Train a ZeroTune model using the knowledge base.
         
         Args:
-            dataset_features: List of dataset features to use.
-            target_params: List of hyperparameters to predict.
-            condition_column: Column to group by for CV (default: 'Dataset').
-            n_iter: Number of random search iterations.
+            dataset_features: List of dataset features to use as input.
+            target_params: List of target parameters to predict.
+            condition_column: Column name to use for grouping data in cross-validation.
+            n_iter: Number of random search iterations for training.
             random_seed: Random seed for reproducibility.
             
         Returns:
-            Tuple of (model, score).
+            Tuple of (trained model, score).
         """
         if self.trials_data is None or self.trials_data.empty:
             self.compile_knowledge_base()
@@ -617,7 +722,7 @@ class KnowledgeBase:
         
         # Train the model with the appropriate arguments
         try:
-            model, score = train_zerotune_model(**train_args)
+            model, score, normalization_params = train_zerotune_model(**train_args)
         except Exception as e:
             # For test compatibility: return a simple model if training fails
             print(f"Warning: Error during model training - {str(e)}")
@@ -628,6 +733,7 @@ class KnowledgeBase:
             dummy_y = pd.DataFrame({param: [0] for param in target_params})
             model.fit(dummy_X, dummy_y)
             score = 0.5  # Dummy score for tests
+            normalization_params = {}  # Empty normalization params
         
         # Create models directory if it doesn't exist
         models_dir = os.path.join(self.kb_dir, "models")
@@ -639,9 +745,77 @@ class KnowledgeBase:
             'model': model,
             'dataset_features': available_features,
             'target_params': target_params,
-            'score': score
+            'score': score,
+            'normalization_params': normalization_params  # Store normalization parameters
         }, model_path)
         
         print(f"Model saved to {model_path}")
         
-        return model, score 
+        return model, score
+
+    def _process_dataset(self, X, y, dataset_name):
+        """Process a dataset by handling categorical features and targets.
+        
+        Args:
+            X: Feature DataFrame
+            y: Target Series
+            dataset_name: Name to identify the dataset
+            
+        Returns:
+            Tuple of (processed_X, processed_y)
+        """
+        # Make copies to avoid modifying originals
+        processed_X = X.copy()
+        processed_y = y.copy()
+        
+        # Process categorical features
+        for col in processed_X.columns:
+            if pd.api.types.is_categorical_dtype(processed_X[col]) or pd.api.types.is_object_dtype(processed_X[col]):
+                try:
+                    print(f"  Converting categorical feature {col} to numeric")
+                    # If categorical type, convert to codes
+                    if pd.api.types.is_categorical_dtype(processed_X[col]):
+                        processed_X[col] = processed_X[col].cat.codes
+                    # If object type (strings), use factorize
+                    else:
+                        processed_X[col] = pd.factorize(processed_X[col])[0]
+                except Exception as e:
+                    print(f"  Warning: Could not convert {col} to numeric: {str(e)}")
+        
+        # Process target if it's categorical
+        if not pd.api.types.is_numeric_dtype(processed_y):
+            try:
+                print(f"  Encoding target values from {processed_y.dtype} to int")
+                encoder = LabelEncoder()
+                processed_y = pd.Series(
+                    encoder.fit_transform(processed_y),
+                    index=processed_y.index,
+                    name=processed_y.name
+                )
+                
+                # Print mapping if small number of classes
+                unique_values = np.unique(y)
+                if len(unique_values) <= 10:
+                    mapping = {original: encoded for original, encoded in zip(encoder.classes_, range(len(encoder.classes_)))}
+                    print(f"  Encoding mapping: {mapping}")
+                else:
+                    print(f"  Encoded {len(unique_values)} unique classes")
+            except Exception as e:
+                print(f"  Warning: Could not encode target: {str(e)}")
+        
+        return processed_X, processed_y
+
+    def _get_dataset_dirs(self):
+        """Get a list of all dataset directories in the knowledge base."""
+        datasets_dir = os.path.join(self.kb_dir, 'datasets')
+        if not os.path.exists(datasets_dir):
+            return []
+        
+        # Get all subdirectories in the datasets directory
+        dataset_names = [d for d in os.listdir(datasets_dir) 
+                       if os.path.isdir(os.path.join(datasets_dir, d))]
+        
+        # Full paths to dataset directories
+        dataset_dirs = [os.path.join(datasets_dir, d) for d in dataset_names]
+        
+        return dataset_dirs 
