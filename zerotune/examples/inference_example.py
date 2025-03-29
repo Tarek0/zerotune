@@ -1,10 +1,10 @@
 """
-Simple example demonstrating ZeroTune inference with pre-trained models.
+Example demonstrating ZeroTune for hyperparameter optimization on a standard dataset.
 
 This example:
 1. Loads the breast cancer dataset
-2. Gets predictions from a pre-trained ZeroTune model
-3. Creates and evaluates a model with the predicted hyperparameters
+2. Uses ZeroTune to optimize hyperparameters for multiple model types
+3. Evaluates and compares the models with optimized hyperparameters
 4. Compares against default hyperparameters
 """
 
@@ -13,29 +13,16 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 from sklearn.datasets import load_breast_cancer
-from sklearn.model_selection import cross_val_score, StratifiedKFold
+from sklearn.model_selection import cross_val_score, StratifiedKFold, train_test_split
+from sklearn.metrics import accuracy_score, roc_auc_score, classification_report
 from sklearn.tree import DecisionTreeClassifier
+from sklearn.ensemble import RandomForestClassifier
+from xgboost import XGBClassifier
 
-# Import ZeroTune - two approaches provided:
-# Approach 1: Use proper package import if installed
-try:
-    from zerotune import (
-        ZeroTunePredictor,
-        get_available_models
-    )
-    print("Using installed ZeroTune package")
-# Approach 2: Use relative import for development
-except ImportError:
-    import sys
-    # Add the parent directory of the current file to the path
-    module_path = str(Path(__file__).resolve().parent.parent.parent)
-    if module_path not in sys.path:
-        sys.path.insert(0, module_path)
-    from zerotune import (
-        ZeroTunePredictor,
-        get_available_models
-    )
-    print("Using development ZeroTune import")
+# Import ZeroTune
+from zerotune import ZeroTune
+from zerotune.core import CONFIG
+from zerotune.core.utils import safe_json_serialize, save_json
 
 # Load the breast cancer dataset
 print("Loading breast cancer dataset...")
@@ -44,67 +31,142 @@ X = pd.DataFrame(data.data, columns=data.feature_names)
 y = pd.Series(data.target)
 
 print(f"Dataset shape: {X.shape}")
+print(f"Number of features: {X.shape[1]}")
+print(f"Class distribution: {y.value_counts().to_dict()}")
 
-# List available pre-trained models
-print("\nAvailable pre-trained models:")
-available_models = get_available_models()
-for name, description in available_models.items():
-    print(f"  - {name}: {description}")
+# Split data into train and test sets
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, 
+    test_size=CONFIG["defaults"]["test_size"], 
+    random_state=CONFIG["defaults"]["random_state"]
+)
 
-# Create ZeroTune predictor
-try:
-    print("\nCreating ZeroTune predictor...")
+# Create output directory
+os.makedirs("output", exist_ok=True)
+
+# Try different model types
+model_types = CONFIG["supported"]["models"]
+results = {}
+default_results = {}
+
+print("\n=== Optimizing Hyperparameters ===")
+
+for model_type in model_types:
+    print(f"\n--- {model_type.upper()} ---")
     
-    # First check if we need to rename the model file to match expected name
-    model_dir = Path(__file__).resolve().parent.parent / "models"
-    expected_file = model_dir / "decision_tree_classifier.joblib"
-    actual_file = model_dir / "ZeroTune_DecisionTreeClassifier4Param.joblib"
+    # Initialize ZeroTune
+    zt = ZeroTune(model_type=model_type, kb_path=f"output/{model_type}_kb.json")
     
-    if not expected_file.exists() and actual_file.exists():
-        print(f"Note: Found model file with different name. Using {actual_file.name}")
-        # Create a temporary symlink or copy in a real application
-        # For this example, we'll just inform the user
+    # Optimize hyperparameters
+    print(f"Optimizing hyperparameters for {model_type}...")
+    best_params, best_score, model = zt.optimize(
+        X_train, y_train, n_iter=5, verbose=True  # Reduced iterations for example
+    )
     
-    predictor = ZeroTunePredictor(model_name="decision_tree")
+    # Evaluate on test set
+    y_pred = model.predict(X_test)
+    accuracy = accuracy_score(y_test, y_pred)
+    try:
+        y_pred_proba = model.predict_proba(X_test)[:, 1]
+        roc_auc = roc_auc_score(y_test, y_pred_proba)
+    except:
+        roc_auc = None
     
-    # Get model info
-    model_info = predictor.get_model_info()
-    print("Model info:")
-    print(f"  - Name: {model_info['name']}")
-    print(f"  - Description: {model_info['description']}")
-    print(f"  - Dataset features: {model_info['dataset_features']}")
-    print(f"  - Target params: {model_info['target_params']}")
+    # Store results
+    results[model_type] = {
+        "params": best_params,
+        "accuracy": accuracy,
+        "roc_auc": roc_auc,
+        "model": model
+    }
     
-    # Predict hyperparameters
-    print("\nPredicting hyperparameters...")
-    hyperparams = predictor.predict(X, y)
-    print("Predicted hyperparameters:")
-    for param, value in hyperparams.items():
-        print(f"  - {param}: {value}")
-    
-    # Evaluate model with predicted hyperparameters
-    print("\nEvaluating model with predicted hyperparameters...")
-    cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
-    model = DecisionTreeClassifier(**hyperparams, random_state=42)
-    scores = cross_val_score(model, X, y, scoring='roc_auc', cv=cv)
-    print(f"ROC AUC with ZeroTune hyperparameters: {np.mean(scores):.4f} ± {np.std(scores):.4f}")
-    
-    # Compare with default hyperparameters
+    print(f"\nResults for {model_type}:")
+    print(f"Accuracy: {accuracy:.4f}")
+    if roc_auc:
+        print(f"ROC AUC: {roc_auc:.4f}")
+    print("Best hyperparameters:", best_params)
+
+    # Compare with default model
     print("\nComparing with default hyperparameters...")
-    default_model = DecisionTreeClassifier(random_state=42)
-    default_scores = cross_val_score(default_model, X, y, scoring='roc_auc', cv=cv)
-    print(f"ROC AUC with default hyperparameters: {np.mean(default_scores):.4f} ± {np.std(default_scores):.4f}")
+    if model_type == "decision_tree":
+        default_model = DecisionTreeClassifier(random_state=CONFIG["defaults"]["random_state"])
+    elif model_type == "random_forest":
+        default_model = RandomForestClassifier(random_state=CONFIG["defaults"]["random_state"])
+    elif model_type == "xgboost":
+        default_model = XGBClassifier(
+            random_state=CONFIG["defaults"]["random_state"],
+            enable_categorical=True
+        )
+    
+    default_model.fit(X_train, y_train)
+    default_y_pred = default_model.predict(X_test)
+    default_accuracy = accuracy_score(y_test, default_y_pred)
+    
+    try:
+        default_y_pred_proba = default_model.predict_proba(X_test)[:, 1]
+        default_roc_auc = roc_auc_score(y_test, default_y_pred_proba)
+    except:
+        default_roc_auc = None
+    
+    default_results[model_type] = {
+        "accuracy": default_accuracy,
+        "roc_auc": default_roc_auc
+    }
+    
+    print(f"Default model accuracy: {default_accuracy:.4f}")
+    if default_roc_auc:
+        print(f"Default model ROC AUC: {default_roc_auc:.4f}")
     
     # Calculate improvement
-    improvement = (np.mean(scores) - np.mean(default_scores)) / np.mean(default_scores) * 100
-    print(f"\nImprovement: {improvement:.2f}%")
+    acc_improvement = ((accuracy - default_accuracy) / default_accuracy) * 100
+    print(f"Accuracy improvement: {acc_improvement:.2f}%")
+    
+    if roc_auc and default_roc_auc:
+        auc_improvement = ((roc_auc - default_roc_auc) / default_roc_auc) * 100
+        print(f"ROC AUC improvement: {auc_improvement:.2f}%")
 
-except Exception as e:
-    print(f"\nError: {e}")
-    print("\nNote: This example requires pre-trained models to be available.")
-    print("If the model file wasn't found, ensure you have the following file in place:")
-    print(f"  - {expected_file}")
-    print("\nAlternatively, you need to update the model name in predictors.py to match your actual file:")
-    print(f"  - Update model_file: 'decision_tree_classifier.joblib' to '{actual_file.name}'")
-    print("\nIf you don't have pre-trained models, you can train your own using the KnowledgeBase class.")
-    print("See the knowledge_base_example.py for instructions.") 
+# Save results to JSON file
+output_results = {
+    "optimized": {model: {
+        "params": results[model]["params"],
+        "accuracy": results[model]["accuracy"],
+        "roc_auc": results[model]["roc_auc"]
+    } for model in model_types},
+    "default": default_results
+}
+save_json(output_results, "output/comparison_results.json")
+print("\nResults saved to output/comparison_results.json")
+
+# Print comparison table
+print("\n\n=== Model Comparison ===\n")
+print(f"{'Model Type':<15} {'Optimized Accuracy':<20} {'Default Accuracy':<20} {'Improvement':<15}")
+print("-" * 70)
+
+for model_type in model_types:
+    opt_acc = results[model_type]['accuracy']
+    def_acc = default_results[model_type]['accuracy']
+    imp = ((opt_acc - def_acc) / def_acc) * 100
+    print(f"{model_type:<15} {opt_acc:<20.4f} {def_acc:<20.4f} {imp:<15.2f}%")
+
+if all(results[mt]['roc_auc'] is not None for mt in model_types):
+    print("\n")
+    print(f"{'Model Type':<15} {'Optimized ROC AUC':<20} {'Default ROC AUC':<20} {'Improvement':<15}")
+    print("-" * 70)
+    
+    for model_type in model_types:
+        opt_auc = results[model_type]['roc_auc']
+        def_auc = default_results[model_type]['roc_auc']
+        imp = ((opt_auc - def_auc) / def_auc) * 100
+        print(f"{model_type:<15} {opt_auc:<20.4f} {def_auc:<20.4f} {imp:<15.2f}%")
+
+# Find the best model
+best_model_type = max(results.items(), key=lambda x: x[1]['accuracy'])[0]
+print(f"\nBest model type: {best_model_type}")
+print(f"Best model accuracy: {results[best_model_type]['accuracy']:.4f}")
+if results[best_model_type]['roc_auc']:
+    print(f"Best model ROC AUC: {results[best_model_type]['roc_auc']:.4f}")
+
+# Print detailed classification report for the best model
+print("\nClassification report for the best model:")
+y_pred = results[best_model_type]['model'].predict(X_test)
+print(classification_report(y_test, y_pred)) 

@@ -67,7 +67,8 @@ def prepare_data(df: pd.DataFrame, target_name: str) -> ProcessedData:
     # Extract target and convert to numeric if needed
     y = df[target_name]
     if y.dtype == 'object' or y.dtype == 'category':
-        y = y.astype(int)
+        # Convert categorical target to numeric
+        y = pd.factorize(y)[0]  # Returns (codes, unique_values)
     
     # Extract features
     X = df.drop(target_name, axis=1)

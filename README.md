@@ -1,373 +1,275 @@
 # ZeroTune
 
-ZeroTune is a Python module for one-shot hyperparameter optimization using meta-learning approaches. It helps you quickly find good hyperparameters for your machine learning models based on dataset characteristics.
+ZeroTune is a hyperparameter optimization system using meta-learning. It collects dataset meta-features and builds a knowledge base of previous optimizations to predict optimal hyperparameters for new datasets, significantly reducing the search space and optimization time.
+
+## Features
+
+- Extract comprehensive dataset meta-features
+- Build model-specific knowledge bases from optimization results
+- Find similar datasets using nearest neighbor search on meta-features
+- Support for multiple ML models (currently `decision_tree`, `random_forest`, `xgboost`)
+- User-friendly API with the `ZeroTune` class as the main interface
+- Modular design for easy extension and maintenance
 
 ## Installation
 
-### Using Poetry (Recommended)
-
-ZeroTune uses Poetry for dependency management:
+This project uses Poetry for dependency management. To install:
 
 ```bash
 # Install Poetry if you haven't already
 curl -sSL https://install.python-poetry.org | python3 -
 
-# Clone the repository and install
+# Clone the repository and navigate to it
 git clone https://github.com/yourusername/zerotune.git
 cd zerotune
+
+# Install dependencies
 poetry install
+```
 
-# Activate the virtual environment
+## Running ZeroTune CLI Commands
+
+After installation, you can run ZeroTune CLI commands in several ways:
+
+### For Poetry 2.0+ (Recommended)
+
+Poetry 2.0+ no longer includes the `shell` command by default. Use these approaches instead:
+
+```bash
+# Option 1: Use poetry run (simplest approach)
+poetry run zerotune demo --model xgboost
+poetry run zerotune predict --dataset 40981 --model decision_tree
+poetry run zerotune datasets --list
+
+# Option 2: Activate the Poetry virtual environment manually
+# First, get your virtual environment path
+poetry env info
+
+# Then activate it using source
+source /path/to/your/virtualenv/bin/activate  # The path from poetry env info
+
+# Now you can run zerotune commands directly
+zerotune demo --model xgboost
+zerotune predict --dataset 40981 --model decision_tree
+```
+
+### For Poetry 1.x
+
+```bash
+# Option 1: Use poetry run
+poetry run zerotune demo --model xgboost
+
+# Option 2: Activate Poetry shell first
 poetry shell
+zerotune demo --model xgboost
 ```
 
-For detailed Poetry setup instructions, see [POETRY_SETUP.md](POETRY_SETUP.md).
+### Using pip (Alternative)
 
-### Using pip
-
-You can also install using pip:
+If you prefer pip, you can install ZeroTune using:
 
 ```bash
+# Install in development mode
 pip install -e .
+
+# Run ZeroTune
+zerotune demo --model xgboost
 ```
 
-## Requirements
+### Python Module Execution
 
-- Python 3.8.1+
-- Dependencies are automatically managed by Poetry
+Run ZeroTune as a Python module without installation:
 
-## Features
+```bash
+python -m zerotune demo --model xgboost
+python -m zerotune predict --dataset 40981 --model decision_tree
+```
 
-- Calculate meta-features from datasets
-- Train zero-shot hyperparameter prediction models
-- Run hyperparameter optimization with Optuna
-- Evaluate models with random hyperparameters
-- Compare performance of different HPO strategies
-- **Ready-to-use pretrained models** for common algorithms:
-  - Decision Tree Classifier
-  - Random Forest Classifier
-  - XGBoost Classifier
-- **Visualize performance improvements** with beautiful comparison charts
+## API Usage
 
-## Main Functionalities
-
-ZeroTune has two main functionalities:
-
-1. **Offline Training**: Build a knowledge base of HPO configurations and train a bespoke ZeroTune model
-2. **Inference**: Use pre-trained ZeroTune predictors to instantly suggest good hyperparameters for your dataset
-
-## Pretrained Models
-
-ZeroTune comes with pretrained models for common machine learning algorithms:
-
-- **Decision Tree Classifier**: Predicts optimal values for max_depth, min_samples_split, min_samples_leaf, and max_features
-- **Random Forest Classifier**: Predicts optimal values for n_estimators, max_depth, min_samples_split, min_samples_leaf, and max_features
-- **XGBoost Classifier**: Predicts optimal values for n_estimators, max_depth, min_samples_split, min_samples_leaf, and max_features
-- More models coming soon!
-
-See [zerotune/models/README.md](zerotune/models/README.md) for detailed information about the pretrained models.
-
-## Usage
-
-### Simple Inference with Pre-trained Models
-
-The easiest way to use ZeroTune is with pre-trained models:
+### Basic Usage
 
 ```python
+from zerotune import ZeroTune
 import pandas as pd
-from sklearn.datasets import load_breast_cancer
-from zerotune import ZeroTunePredictor, get_available_models
-
-# See what models are available
-print(get_available_models())
+from sklearn.model_selection import train_test_split
 
 # Load your dataset
-data = load_breast_cancer()
-X = pd.DataFrame(data.data, columns=data.feature_names)
-y = pd.Series(data.target)
+df = pd.read_csv('your_dataset.csv')
+X = df.drop('target', axis=1)
+y = df['target']
 
-# Create a predictor with the pre-trained decision tree model
-predictor = ZeroTunePredictor(model_name="decision_tree")
+# Split into train and test sets
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
 
-# Get hyperparameter predictions for your dataset
-hyperparams = predictor.predict(X, y)
-print("Predicted hyperparameters:", hyperparams)
+# Initialize ZeroTune with the desired model type
+zt = ZeroTune(model_type='decision_tree')
 
-# Create and train a model with the predicted hyperparameters
-from sklearn.tree import DecisionTreeClassifier
-model = DecisionTreeClassifier(**hyperparams)
-model.fit(X, y)
+# Optimize hyperparameters
+best_params, best_score, model = zt.optimize(X_train, y_train)
+
+# Evaluate on test set
+test_score = model.score(X_test, y_test)
+print(f"Best parameters: {best_params}")
+print(f"Test score: {test_score}")
 ```
 
-### Offline Training: Building a Knowledge Base
+### Using Configuration and Utilities
 
-For more advanced users, you can create your own knowledge base and train a custom ZeroTune model:
-
-```python
-from zerotune import KnowledgeBase
-
-# Create a new knowledge base
-kb = KnowledgeBase(name="my_decision_tree_kb")
-
-# Add datasets from OpenML (classification datasets)
-kb.add_dataset_from_openml(dataset_id=31)  # credit-g
-kb.add_dataset_from_openml(dataset_id=40994)  # SpeedDating
-
-# Generate synthetic datasets
-kb.add_multiple_synthetic_datasets(n_datasets=100, random_seed=42)
-
-# Compile and save the knowledge base
-kb.compile_knowledge_base()
-kb.save()
-
-# Define features and target parameters for training
-dataset_features = ["n_samples", "n_features", "n_highly_target_corr", "imbalance_ratio"]
-target_params = ["params_max_depth", "params_min_samples_split", "params_min_samples_leaf", "params_max_features"]
-
-# Train a ZeroTune model
-model, score = kb.train_model(
-    dataset_features=dataset_features, 
-    target_params=target_params
-)
-
-print(f"Model trained with MSE: {score}")
-```
-
-### Using a Custom Trained Model
-
-After training your own model, you can use it with the CustomZeroTunePredictor:
+ZeroTune provides a centralized configuration module and utilities to help manage settings and perform common operations:
 
 ```python
-from zerotune import CustomZeroTunePredictor
+from zerotune import ZeroTune
+from zerotune.core import CONFIG
+from zerotune.core.utils import safe_json_serialize, save_json
 
-# Parameter configuration
-param_config = {
-    "max_depth": {
-        "percentage_splits": [0.25, 0.5, 0.7, 0.8, 0.9, 0.999], 
-        "param_type": "int", 
-        "dependency": "n_samples"
-    },
-    "min_samples_split": {
-        "percentage_splits": [0.005, 0.01, 0.02, 0.05, 0.1], 
-        "param_type": "float"
-    },
-    "min_samples_leaf": {
-        "percentage_splits": [0.005, 0.01, 0.02, 0.05, 0.1], 
-        "param_type": "float"
-    },
-    "max_features": {
-        "percentage_splits": [0.5, 0.7, 0.8, 0.9, 0.99], 
-        "param_type": "float"
-    }
+# Use configuration values
+print(f"Default model type: {CONFIG['defaults']['model_type']}")
+print(f"Supported models: {CONFIG['supported']['models']}")
+
+# Initialize ZeroTune with default model type 
+zt = ZeroTune()  # Will use the default model_type from CONFIG
+
+# Save results with proper JSON serialization
+results = {
+    "parameters": best_params,
+    "score": best_score,
+    "numpy_array": X_train.values[0]  # Will be properly serialized
 }
-
-# Create predictor with your custom model
-predictor = CustomZeroTunePredictor(
-    model_path="./zerotune_kb/my_decision_tree_kb/zerotune_model.joblib",
-    param_config=param_config
-)
-
-# Use it to predict hyperparameters for a new dataset
-hyperparams = predictor.predict(X_new, y_new)
+save_json(results, "results.json")
 ```
 
-### Calculate Dataset Meta-Parameters
+### Building a Knowledge Base
 
 ```python
-import pandas as pd
-from zerotune import calculate_dataset_meta_parameters
+from zerotune import ZeroTune, get_recommended_datasets
 
-# Load your dataset
-X = pd.DataFrame(your_features)
-y = pd.Series(your_target)
+# Get recommended datasets for building a knowledge base
+dataset_ids = get_recommended_datasets(n_datasets=5)
 
-# Calculate meta-parameters
-meta_params = calculate_dataset_meta_parameters(X, y)
-print(meta_params)
+# Initialize ZeroTune with desired model type
+zt = ZeroTune(model_type='random_forest')
+
+# Build knowledge base
+kb = zt.build_knowledge_base(dataset_ids=dataset_ids, n_iter=20)
+
+# Now you can use the knowledge base for future optimizations
 ```
 
-### Run Hyperparameter Optimization with Optuna
+### Working with OpenML Datasets
 
 ```python
-from zerotune import optuna_hpo
+from zerotune import ZeroTune, fetch_open_ml_data, prepare_data
 
-# Define parameter configuration for DecisionTreeClassifier
-param_config = {
-    "max_depth": {
-        "percentage_splits": [0.25, 0.5, 0.7, 0.8, 0.9, 0.999], 
-        "param_type": "int", 
-        "dependency": "n_samples"
-    },
-    "min_samples_split": {
-        "percentage_splits": [0.005, 0.01, 0.02, 0.05, 0.1], 
-        "param_type": "float"
-    },
-    "min_samples_leaf": {
-        "percentage_splits": [0.005, 0.01, 0.02, 0.05, 0.1], 
-        "param_type": "float"
-    },
-    "max_features": {
-        "percentage_splits": [0.5, 0.7, 0.8, 0.9, 0.99], 
-        "param_type": "float"
-    }
-}
+# Fetch a dataset from OpenML
+df, target_name, dataset_name = fetch_open_ml_data(dataset_id=40981)
+X, y = prepare_data(df, target_name)
 
-# Run Optuna HPO with ZeroTune warm-start
-results = optuna_hpo(
-    X, y, 
-    meta_params=["n_samples", "n_features", "n_highly_target_corr"],
-    param_config=param_config,
-    zerotune_params=predicted_params,  # Use ZeroTune predictions as warm-start
-    n_trials=100,
-    n_seeds=5
-)
+# Initialize ZeroTune
+zt = ZeroTune(model_type='xgboost')
 
-print(f"Best performance: {results['average_best_perf']}")
-print(f"Best hyperparameters: {results['all_results'][0]['best_hyperparams']}")
+# Optimize hyperparameters
+best_params, best_score, model = zt.optimize(X, y)
 ```
 
-### Performance Visualization
+## CLI Commands Reference
 
-ZeroTune can visualize the performance improvement gained from using optimized hyperparameters:
+ZeroTune provides several command-line interfaces:
 
-```python
-import matplotlib.pyplot as plt
-import numpy as np
-from sklearn.model_selection import cross_val_score, StratifiedKFold
+### Demo Command
 
-# Evaluate with ZeroTune hyperparameters
-model = DecisionTreeClassifier(**hyperparams, random_state=42)
-scores = cross_val_score(model, X, y, scoring='roc_auc', cv=5)
-
-# Compare with default hyperparameters
-default_model = DecisionTreeClassifier(random_state=42)
-default_scores = cross_val_score(default_model, X, y, scoring='roc_auc', cv=5)
-
-# Calculate improvement
-improvement = (np.mean(scores) - np.mean(default_scores)) / np.mean(default_scores) * 100
-
-# Visualize results
-plt.figure(figsize=(10, 6))
-bars = plt.bar(['Default', 'ZeroTune'], 
-             [np.mean(default_scores), np.mean(scores)],
-             yerr=[np.std(default_scores), np.std(scores)],
-             capsize=10, alpha=0.7, color=['lightgray', 'green'])
-
-# Add labels and title
-plt.ylabel('ROC AUC Score')
-plt.title('Performance Comparison: Default vs ZeroTune Hyperparameters')
-plt.ylim(0.9, 1.0)
-
-# Add improvement annotation
-plt.annotate(f'+{improvement:.2f}%', 
-            xy=(1, np.mean(scores)), 
-            xytext=(1.2, np.mean(scores) + 0.02),
-            arrowprops=dict(facecolor='black', shrink=0.05),
-            fontsize=12, fontweight='bold')
-
-plt.tight_layout()
-plt.savefig('zerotune_performance_comparison.png')
-plt.show()
-```
-
-## Running the Examples
-
-ZeroTune includes several example scripts to help you get started:
+Run a demonstration of ZeroTune with a sample dataset:
 
 ```bash
-# Test the pre-trained model
-python zerotune/examples/test_pretrained_model.py
-
-# Simple inference with pre-trained model
-python zerotune/examples/inference_example.py
-
-# Build a knowledge base and train a custom model
-python zerotune/examples/knowledge_base_example.py
-
-# Custom model training and evaluation
-python zerotune/examples/custom_model_example.py
-
-# Compare performance of multiple model types (Decision Tree, Random Forest, XGBoost)
-python zerotune/examples/multi_model_example.py
-
-# Advanced visualization of hyperparameter performance
-python zerotune/examples/visualization_example.py
-
-# Basic functionality demonstration
-python zerotune/examples/simple_example.py
-
-# Poetry dependency management
-python zerotune/examples/poetry_example.py
+zerotune demo --model xgboost
 ```
 
-## Running Tests
+### Predict Command
 
-ZeroTune includes a comprehensive test suite to ensure code quality and functionality. You can run the tests using pytest:
+Predict optimal hyperparameters for a dataset:
 
 ```bash
-# Install development dependencies if you haven't already
-poetry install --with dev
-
-# Run all tests
-poetry run pytest
-
-# Run tests with coverage report
-poetry run pytest --cov=zerotune
-
-# Run specific test categories
-poetry run pytest tests/test_zerotune_core.py  # Core functionality tests
-poetry run pytest tests/test_integration.py    # Integration tests
-poetry run pytest tests/test_environment.py    # Environment validation tests
-
-# Run tests with specific markers
-poetry run pytest -m "integration"  # Run only integration tests
-poetry run pytest -m "not slow"     # Skip slow tests
+zerotune predict --dataset 40981 --model decision_tree
+zerotune predict --dataset path/to/your/dataset.csv --model random_forest
 ```
 
-The test suite includes:
+### Train Command
 
-- **Unit tests**: Verify individual components function correctly
-- **Integration tests**: Test complete workflows from knowledge base to prediction
-- **Edge case tests**: Test behavior with empty datasets, single rows, high-dimensional data
-- **Parameterized tests**: Test multiple configurations with the same test logic
-- **Environment tests**: Validate Python version and dependency compatibility
-
-For more details about the testing framework and available tests, see the [tests/README.md](tests/README.md) file.
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-### Dependency Management
-
-ZeroTune uses Poetry for dependency management. For compatible versions with Python 3.8+:
+Build a knowledge base from multiple datasets:
 
 ```bash
-# Add a Python 3.8 compatible version of matplotlib
-poetry add "matplotlib<3.10"
-
-# Add other dependencies with specific version constraints if needed
-poetry add "importlib-resources<6.0.0"
+zerotune train --datasets 31 38 44 --model random_forest
 ```
 
-## Citation
+### Datasets Command
 
-If you use ZeroTune in your research or work, please cite:
+List available OpenML datasets or get recommendations:
 
-```bibtex
-@InProceedings{zt1_salhi_2025,
-  author    = "Salhi, Tarek and Woodward, John",
-  editor    = "Nicosia, Giuseppe and Ojha, Varun and Giesselbach, Sven and Pardalos, M. Panos and Umeton, Renato",
-  title     = "Beyond Iterative Tuning: Zero-Shot Hyperparameter Optimisation for Decision Trees",
-  booktitle = "Machine Learning, Optimization, and Data Science",
-  year      = "2025",
-  publisher = "Springer Nature Switzerland",
-  address   = "Cham",
-  pages     = "359--374",
-  isbn      = "978-3-031-82481-4"
-}
+```bash
+# Show recommended datasets
+zerotune datasets
+
+# List all available datasets
+zerotune datasets --list
+
+# Filter by category
+zerotune datasets --list --category binary
 ```
+
+## Dataset Catalog
+
+ZeroTune includes a dataset catalog that helps you select appropriate OpenML datasets for training and testing:
+
+```python
+from zerotune import get_recommended_datasets, get_dataset_ids
+from zerotune.core.data_loading import load_dataset_catalog
+
+# Load the dataset catalog
+catalog = load_dataset_catalog()
+
+# Get dataset IDs by category
+binary_datasets = get_dataset_ids(category='binary')
+multiclass_datasets = get_dataset_ids(category='multi-class')
+
+# Get recommended datasets for training
+recommended_datasets = get_recommended_datasets(n_datasets=5)
+```
+
+## Module Structure
+
+ZeroTune has a modular structure for easy maintenance and extension:
+
+- `zerotune/core/zero_tune.py` - Main `ZeroTune` class
+- `zerotune/core/model_configs.py` - Model configurations
+- `zerotune/core/data_loading.py` - Dataset loading functions
+- `zerotune/core/feature_extraction.py` - Meta-feature extraction
+- `zerotune/core/optimization.py` - Hyperparameter optimization
+- `zerotune/core/knowledge_base.py` - Knowledge base management
+- `zerotune/core/config.py` - Centralized configuration settings
+- `zerotune/core/utils.py` - Common utility functions
+
+## How It Works
+
+1. **Dataset Feature Extraction**: ZeroTune extracts meta-features from datasets, including size, imbalance ratio, feature correlations, and statistical moments.
+
+2. **Knowledge Base Building**: The system builds a knowledge base by optimizing hyperparameters on a collection of datasets and recording the results.
+
+3. **Similar Dataset Finding**: For new datasets, ZeroTune computes meta-features and finds similar datasets in the knowledge base.
+
+4. **Hyperparameter Optimization**: The system optimizes hyperparameters using the knowledge from similar datasets as guidance.
+
+## Troubleshooting
+
+If you encounter issues running ZeroTune:
+
+1. **Command not found**: Make sure you're in the correct virtual environment. For Poetry 2.0+, use `poetry run zerotune` or activate the environment manually using `source /path/to/virtualenv/bin/activate`.
+
+2. **Import errors**: Ensure the package is properly installed. Try reinstalling with `poetry install`.
+
+3. **Metric errors**: The system uses ROC AUC as a default metric for classification tasks. Make sure your model supports probability predictions.
+
+4. **Dataset errors**: Verify OpenML dataset IDs are correct and accessible.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details. 
+MIT 

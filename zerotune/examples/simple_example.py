@@ -3,10 +3,9 @@ Simple example script demonstrating ZeroTune functionality.
 
 This example:
 1. Creates a synthetic dataset
-2. Calculates dataset meta-features
-3. Sets up parameter configuration for a decision tree
-4. Runs Optuna HPO 
-5. Compares with random hyperparameter search
+2. Initializes ZeroTune with a specific model type
+3. Optimizes hyperparameters
+4. Evaluates the model with optimized hyperparameters
 
 You can use this as a template for your own experiments.
 """
@@ -16,15 +15,12 @@ import pandas as pd
 import numpy as np
 from sklearn.datasets import make_classification
 from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score, classification_report
+from pathlib import Path
 
 # Import ZeroTune
-import sys
-sys.path.append("../../")  # Add parent directory to path
-from zerotune import (
-    calculate_dataset_meta_parameters,
-    optuna_hpo,
-    random_hyperparameter_evaluation
-)
+from zerotune import ZeroTune
+from zerotune.core import CONFIG  # Import the config module
 
 # Create output directory
 os.makedirs("output", exist_ok=True)
@@ -36,77 +32,72 @@ X, y = make_classification(
     n_informative=10,
     n_redundant=5,
     flip_y=0.05,
-    random_state=42
+    random_state=CONFIG["defaults"]["random_state"]  # Use config random state
 )
 
 # Convert to pandas DataFrame/Series for better handling
 X = pd.DataFrame(X, columns=[f"feature_{i}" for i in range(X.shape[1])])
 y = pd.Series(y)
 
-# Calculate dataset meta-parameters
-meta_params = calculate_dataset_meta_parameters(X, y)
-print("Dataset meta-parameters:")
-for key, value in meta_params.items():
-    print(f"  {key}: {value}")
+# Split into train and test sets
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=CONFIG["defaults"]["test_size"], random_state=CONFIG["defaults"]["random_state"]  # Use config values
+)
 
-# Define parameter configuration for DecisionTreeClassifier
-param_config = {
-    "max_depth": {
-        "percentage_splits": [0.25, 0.5, 0.7, 0.8, 0.9, 0.999], 
-        "param_type": "int", 
-        "dependency": "n_samples"
-    },
-    "min_samples_split": {
-        "percentage_splits": [0.005, 0.01, 0.02, 0.05, 0.1], 
-        "param_type": "float"
-    },
-    "min_samples_leaf": {
-        "percentage_splits": [0.005, 0.01, 0.02, 0.05, 0.1], 
-        "param_type": "float"
-    },
-    "max_features": {
-        "percentage_splits": [0.5, 0.7, 0.8, 0.9, 0.99], 
-        "param_type": "float"
+print(f"Dataset shape: {X.shape}")
+print(f"Training set size: {X_train.shape[0]}")
+print(f"Test set size: {X_test.shape[0]}")
+
+# Try different model types
+model_types = CONFIG["supported"]["models"]  # Use models from config
+
+results = {}
+
+for model_type in model_types:
+    print(f"\n\n=== Optimizing {model_type} ===\n")
+    
+    # Initialize ZeroTune with the specified model type
+    zt = ZeroTune(model_type=model_type, kb_path="output/kb.json")
+    
+    # Optimize hyperparameters
+    print(f"Optimizing hyperparameters for {model_type}...")
+    best_params, best_score, model = zt.optimize(
+        X_train, y_train, n_iter=5, verbose=True  # Reduce iterations for example
+    )
+    
+    # Evaluate on test set
+    y_pred = model.predict(X_test)
+    test_accuracy = accuracy_score(y_test, y_pred)
+    
+    # Store results
+    results[model_type] = {
+        "best_params": best_params,
+        "best_score": best_score,
+        "test_accuracy": test_accuracy,
+        "model": model
     }
-}
+    
+    # Print results
+    print(f"\nResults for {model_type}:")
+    print(f"Best validation score: {best_score:.4f}")
+    print(f"Test accuracy: {test_accuracy:.4f}")
+    print("\nBest hyperparameters:")
+    for param, value in best_params.items():
+        print(f"  {param}: {value}")
+    
+    # Print classification report
+    print("\nClassification report:")
+    print(classification_report(y_test, y_pred))
 
-# Define which meta-parameters to use
-selected_meta_params = ["n_samples", "n_features", "n_highly_target_corr"]
+# Compare results
+print("\n\n=== Comparison of Model Types ===\n")
+print(f"{'Model Type':<15} {'Validation Score':<20} {'Test Accuracy':<15}")
+print("-" * 50)
 
-# Run random hyperparameter search
-print("\nRunning random hyperparameter search...")
-rand_hyperparams, rand_perf, rand_scores = random_hyperparameter_evaluation(
-    X, y,
-    meta_params=selected_meta_params,
-    param_config=param_config,
-    model_name="DecisionTreeClassifier4Param",
-    random_seed=42,
-    n_seeds=5
-)
+for model_type, result in results.items():
+    print(f"{model_type:<15} {result['best_score']:<20.4f} {result['test_accuracy']:<15.4f}")
 
-print(f"Random hyperparameter performance: {rand_perf:.4f}")
-print(f"Random hyperparameters: {rand_hyperparams}")
-
-# Run Optuna HPO
-print("\nRunning Optuna hyperparameter optimization...")
-optuna_results = optuna_hpo(
-    X, y,
-    meta_params=selected_meta_params,
-    param_config=param_config,
-    n_trials=50,
-    n_seeds=5,
-    model_name="DecisionTreeClassifier4Param"
-)
-
-print(f"Optuna best performance: {optuna_results['average_best_perf']:.4f}")
-print(f"Optuna best hyperparameters: {optuna_results['all_results'][0]['best_hyperparams']}")
-
-# Save results to CSV
-optuna_results['combined_trials_df'].to_csv("output/optuna_trials.csv", index=False)
-print("\nResults saved to output/optuna_trials.csv")
-
-# Comparison
-print("\nPerformance Comparison:")
-print(f"Random Search: {rand_perf:.4f}")
-print(f"Optuna HPO:    {optuna_results['average_best_perf']:.4f}")
-print(f"Improvement:   {(optuna_results['average_best_perf'] - rand_perf) / rand_perf * 100:.2f}%") 
+# Find the best model
+best_model_type = max(results.items(), key=lambda x: x[1]['test_accuracy'])[0]
+print(f"\nBest model type: {best_model_type}")
+print(f"Best model test accuracy: {results[best_model_type]['test_accuracy']:.4f}") 

@@ -7,11 +7,12 @@ information about datasets and their optimal hyperparameter configurations.
 """
 
 import os
-import json
 import time
-import numpy as np
 from typing import Dict, List, Optional, Union, Any
 from pathlib import Path
+
+from zerotune.core.config import CONFIG, DEFAULT_KB_DIR, get_knowledge_base_path
+from zerotune.core.utils import safe_json_serialize, load_json, save_json
 
 # Type aliases
 KnowledgeBase = Dict[str, Any]
@@ -66,32 +67,25 @@ def load_knowledge_base(file_path: str, model_type: Optional[str] = None) -> Kno
             file_path = model_file_path
             model_specific_file = True
     
-    try:
-        # Make sure the directory exists
-        os.makedirs(os.path.dirname(file_path), exist_ok=True)
-        
-        # Check if file exists
-        if os.path.exists(file_path):
-            with open(file_path, 'r') as f:
-                kb = json.load(f)
-                
-                # If we're using a regular file but model_type is specified,
-                # filter the results to include only that model type
-                if model_type and not model_specific_file and "results" in kb:
-                    kb["results"] = [r for r in kb["results"] 
-                                    if r.get("model_type") == model_type]
-                
-                return kb
-        else:
-            # Create an empty knowledge base
-            kb = initialize_knowledge_base()
-            # Save the new empty knowledge base
-            with open(file_path, 'w') as f:
-                json.dump(kb, f, indent=2)
-            return kb
-    except Exception as e:
-        print(f"Error loading knowledge base: {e}")
-        return initialize_knowledge_base()
+    # Make sure the directory exists
+    os.makedirs(os.path.dirname(file_path), exist_ok=True)
+    
+    # Load the knowledge base
+    kb = load_json(file_path, default=None)
+    
+    if kb is not None:
+        # If we're using a regular file but model_type is specified,
+        # filter the results to include only that model type
+        if model_type and not model_specific_file and "results" in kb:
+            kb["results"] = [r for r in kb["results"] 
+                             if r.get("model_type") == model_type]
+        return kb
+    else:
+        # Create an empty knowledge base
+        kb = initialize_knowledge_base()
+        # Save the new empty knowledge base
+        save_json(kb, file_path)
+        return kb
 
 
 def save_knowledge_base(
@@ -121,38 +115,11 @@ def save_knowledge_base(
         model_specific_filename = f"{base_name}_{model_type}.json"
         file_path = os.path.join(dir_path, model_specific_filename)
     
-    try:
-        # Make sure the directory exists
-        os.makedirs(os.path.dirname(file_path), exist_ok=True)
-        
-        # Update the timestamp
-        knowledge_base["updated_at"] = time.time()
-        
-        # Convert numpy types to native Python types
-        def convert_numpy_types(obj):
-            if isinstance(obj, dict):
-                return {k: convert_numpy_types(v) for k, v in obj.items()}
-            elif isinstance(obj, list):
-                return [convert_numpy_types(item) for item in obj]
-            elif isinstance(obj, (np.int_, np.intc, np.intp, np.int8, np.int16, np.int32, np.int64)):
-                return int(obj)
-            elif isinstance(obj, (np.float_, np.float16, np.float32, np.float64)):
-                return float(obj)
-            elif isinstance(obj, (np.ndarray,)):
-                return obj.tolist()
-            return obj
-        
-        # Convert numpy types in the knowledge base
-        kb_to_save = convert_numpy_types(knowledge_base)
-        
-        # Save the knowledge base
-        with open(file_path, 'w') as f:
-            json.dump(kb_to_save, f, indent=2)
-        
-        return True
-    except Exception as e:
-        print(f"Error saving knowledge base: {e}")
-        return False
+    # Update the timestamp
+    knowledge_base["updated_at"] = time.time()
+    
+    # Save the knowledge base using the util function
+    return save_json(knowledge_base, file_path)
 
 
 def update_knowledge_base(
@@ -201,80 +168,77 @@ def update_knowledge_base(
     if "results" not in knowledge_base:
         knowledge_base["results"] = []
     
-    result = {
+    # Create the result entry
+    result_entry = {
         "dataset_name": dataset_name,
         "best_hyperparameters": best_hyperparameters,
-        "best_score": best_score
+        "best_score": best_score,
+        "timestamp": time.time()
     }
     
-    if dataset_id is not None:
-        result["dataset_id"] = dataset_id
+    if dataset_id:
+        result_entry["dataset_id"] = dataset_id
     
-    if all_results is not None:
-        result["all_results"] = all_results
+    if model_type:
+        result_entry["model_type"] = model_type
     
-    if model_type is not None:
-        result["model_type"] = model_type
+    if all_results:
+        result_entry["all_results"] = all_results
     
-    # Check if we already have a result for this dataset and model type
-    existing_result_index = None
-    for i, r in enumerate(knowledge_base["results"]):
-        if (r.get("dataset_name") == dataset_name and 
-            r.get("model_type") == model_type):
-            existing_result_index = i
-            break
+    # Add the result
+    knowledge_base["results"].append(result_entry)
     
-    # Update existing result or add new one
-    if existing_result_index is not None:
-        knowledge_base["results"][existing_result_index] = result
-    else:
-        knowledge_base["results"].append(result)
-    
-    # Update datasets list
+    # Update datasets
     if "datasets" not in knowledge_base:
         knowledge_base["datasets"] = []
     
-    # Check if dataset is already in the list
+    # Check if dataset exists already in the datasets list
     dataset_exists = False
-    for dataset in knowledge_base["datasets"]:
+    for i, dataset in enumerate(knowledge_base["datasets"]):
         if dataset.get("name") == dataset_name:
-            # Update the dataset entry if needed
-            if dataset_id is not None and dataset.get("id") != dataset_id:
-                dataset["id"] = dataset_id
+            # Update existing dataset entry
             dataset_exists = True
+            knowledge_base["datasets"][i]["updated_at"] = time.time()
+            
+            # Update meta features if provided
+            if "meta_features" in knowledge_base["datasets"][i]:
+                knowledge_base["datasets"][i]["meta_features"].update(meta_features)
+            else:
+                knowledge_base["datasets"][i]["meta_features"] = meta_features
+                
+            # Update dataset ID if provided
+            if dataset_id:
+                knowledge_base["datasets"][i]["id"] = dataset_id
+            
             break
     
-    # Add new dataset entry if it doesn't exist
+    # Add new dataset if it doesn't exist
     if not dataset_exists:
-        dataset_info = {"name": dataset_name}
-        if dataset_id is not None:
-            dataset_info["id"] = dataset_id
-        knowledge_base["datasets"].append(dataset_info)
+        dataset_entry = {
+            "name": dataset_name,
+            "meta_features": meta_features,
+            "created_at": time.time(),
+            "updated_at": time.time()
+        }
+        
+        if dataset_id:
+            dataset_entry["id"] = dataset_id
+        
+        knowledge_base["datasets"].append(dataset_entry)
     
-    # Update timestamp
+    # Update the knowledge base's update timestamp
     knowledge_base["updated_at"] = time.time()
     
     return knowledge_base
 
 
-def get_knowledge_base_path(base_dir: str = "knowledge_base", filename: str = "kb.json") -> str:
+# Function now uses the config module to determine path
+def get_knowledge_base_path() -> str:
     """
-    Get the path to the knowledge base file.
+    Get the path for the knowledge base file.
     
-    Args:
-        base_dir: Base directory for knowledge base
-        filename: Filename for knowledge base
-        
     Returns:
-        Full path to knowledge base file
+        Path to the knowledge base file
     """
-    # Get the directory of the current file
-    current_dir = Path(__file__).parent.parent.parent
-    
-    # Construct the path to the knowledge base
-    kb_dir = current_dir / base_dir
-    
-    # Create directory if it doesn't exist
-    os.makedirs(kb_dir, exist_ok=True)
-    
-    return str(kb_dir / filename) 
+    # Use the function from the config module
+    return get_knowledge_base_path("default") 
