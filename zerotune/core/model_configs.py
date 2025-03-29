@@ -5,9 +5,14 @@ This module contains the configurations for different machine learning models
 that can be optimized using ZeroTune's meta-learning approach.
 """
 
+from typing import Dict, List, Union, Any
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
 from xgboost import XGBClassifier
+
+# Type aliases
+ModelConfig = Dict[str, Any]
+ParamConfig = Dict[str, Dict[str, Union[List[float], str, float]]]
 
 
 class ModelConfigs:
@@ -20,7 +25,7 @@ class ModelConfigs:
     """
     
     @staticmethod
-    def get_decision_tree_config():
+    def get_decision_tree_config() -> ModelConfig:
         """
         Returns configuration for DecisionTreeClassifier.
         
@@ -29,7 +34,7 @@ class ModelConfigs:
         hyperparameters.
         
         Returns:
-            dict: Configuration dictionary with keys:
+            Configuration dictionary with keys:
                 - name: Name of the model
                 - model: Instance of DecisionTreeClassifier
                 - metric: Evaluation metric to use
@@ -48,7 +53,7 @@ class ModelConfigs:
         }
     
     @staticmethod
-    def get_random_forest_config():
+    def get_random_forest_config() -> ModelConfig:
         """
         Returns configuration for RandomForestClassifier.
         
@@ -57,7 +62,7 @@ class ModelConfigs:
         hyperparameters.
         
         Returns:
-            dict: Configuration dictionary with keys:
+            Configuration dictionary with keys:
                 - name: Name of the model
                 - model: Instance of RandomForestClassifier
                 - metric: Evaluation metric to use
@@ -77,7 +82,7 @@ class ModelConfigs:
         }
     
     @staticmethod
-    def get_xgboost_config():
+    def get_xgboost_config() -> ModelConfig:
         """
         Returns configuration for XGBClassifier.
         
@@ -86,7 +91,7 @@ class ModelConfigs:
         hyperparameters.
         
         Returns:
-            dict: Configuration dictionary with keys:
+            Configuration dictionary with keys:
                 - name: Name of the model
                 - model: Instance of XGBClassifier
                 - metric: Evaluation metric to use
@@ -94,7 +99,11 @@ class ModelConfigs:
         """
         return {
             "name": "XGBClassifier",
-            "model": XGBClassifier(random_state=42, use_label_encoder=False, eval_metric='logloss'),
+            "model": XGBClassifier(
+                random_state=42,
+                eval_metric='logloss',
+                enable_categorical=True
+            ),
             'metric': 'roc_auc',
             'param_config': {
                 'n_estimators': {'percentage_splits': [0.1, 0.2, 0.3, 0.4, 0.5], 'param_type': "int", 'dependency': 'n_features', 'multiplier': 100},
