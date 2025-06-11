@@ -61,4 +61,7 @@ Thumbs.db
 # ZeroTune specific
 zerotune_kb/
 *.joblib
-zerotune_performance_comparison.png 
+zerotune_performance_comparison.png
+output/
+knowledge_base/
+my_experiment/ 
