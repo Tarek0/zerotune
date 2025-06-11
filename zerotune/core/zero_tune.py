@@ -172,7 +172,8 @@ class ZeroTune:
         n_iter: Optional[int] = None,
         test_size: Optional[float] = None,
         random_state: Optional[int] = None,
-        verbose: bool = True
+        verbose: bool = True,
+        optimize: bool = True
     ) -> Tuple[Dict[str, Any], float, BaseEstimator]:
         """
         Optimize hyperparameters for a given dataset using meta-learning.
@@ -181,9 +182,10 @@ class ZeroTune:
         1. Calculates meta-features for the provided dataset
         2. Finds similar datasets in the knowledge base
         3. Retrieves best hyperparameter configurations from similar datasets
-        4. Performs hyperparameter optimization using the retrieved configurations as guidance
-        5. Trains a final model with the best hyperparameters
-        6. Updates the knowledge base with the new optimization results
+        4. If optimize=True, performs hyperparameter optimization using the retrieved configurations as guidance
+        5. If optimize=False, uses the best retrieved configuration directly (zero-shot, no search)
+        6. Trains a final model with the best hyperparameters
+        7. Updates the knowledge base with the new optimization results
         
         Args:
             X: Feature matrix for the dataset to optimize
@@ -192,13 +194,12 @@ class ZeroTune:
             test_size: Proportion of the dataset to use for testing when splitting (default from config)
             random_state: Random seed for reproducibility (default from config)
             verbose: Whether to print progress information during optimization
-            
+            optimize: If False, only use the best config from similar datasets (zero-shot, no search). If True, run iterative HPO (default).
         Returns:
             A tuple containing:
                 - best_params: The best hyperparameters found
                 - best_score: The performance score achieved with the best hyperparameters
                 - trained_model: A trained model instance using the best hyperparameters
-            
         Note:
             This method updates the knowledge base with the results of the optimization.
         """
@@ -232,15 +233,15 @@ class ZeroTune:
             print(f"Found similar datasets: {similar_datasets}")
         
         # Retrieve best configurations from similar datasets
-        best_configs = retrieve_best_configurations(
+        warm_start_configs = retrieve_best_configurations(
             similar_datasets,
             self.knowledge_base,
             model_type=self.model_type
         )
         
         if verbose:
-            print(f"Retrieved {len(best_configs)} configurations from similar datasets")
-            
+            print(f"Retrieved {len(warm_start_configs)} configurations from similar datasets")
+        
         # Convert parameter config to grid
         param_grid = self._convert_param_config_to_grid(
             self.model_config['param_config'],
@@ -250,7 +251,43 @@ class ZeroTune:
         if verbose:
             print(f"Parameter grid: {param_grid}")
         
-        # Perform hyperparameter optimization
+        if not optimize:
+            # Zero-shot: Use the best retrieved config only
+            if not warm_start_configs:
+                raise RuntimeError("No similar datasets found in the knowledge base for zero-shot prediction.")
+            best_params = warm_start_configs[0]
+            # Convert relative params if needed
+            from zerotune.core.optimization import _convert_relative_to_absolute_params
+            best_params = _convert_relative_to_absolute_params(best_params, param_grid, meta_features)
+            # Train and evaluate model
+            final_model = train_final_model(
+                self.model_class,
+                best_params,
+                X_train, y_train
+            )
+            best_score = calculate_performance_score(
+                final_model,
+                X_test, y_test,
+                metric=self.model_config['metric']
+            )
+            if verbose:
+                print(f"Zero-shot best parameters: {best_params}")
+                print(f"Zero-shot test score: {best_score}")
+            # Optionally update knowledge base
+            dataset_name = f"user_dataset_{len(self.knowledge_base.get('datasets', []))}"
+            update_knowledge_base(
+                self.knowledge_base,
+                dataset_name=dataset_name,
+                meta_features=meta_features,
+                best_hyperparameters=best_params,
+                best_score=best_score,
+                all_results=[{"hyperparameters": best_params, "score": best_score, "state": "ZERO_SHOT"}],
+                model_type=self.model_type
+            )
+            save_knowledge_base(self.knowledge_base, self.kb_path, self.model_type)
+            return best_params, best_score, final_model
+        
+        # Iterative HPO (default)
         best_params, best_score, all_results = optimize_hyperparameters(
             self.model_class,
             param_grid,
@@ -259,7 +296,9 @@ class ZeroTune:
             n_iter=n_iter,
             test_size=test_size,
             random_state=random_state,
-            verbose=verbose
+            verbose=verbose,
+            warm_start_configs=warm_start_configs,
+            dataset_meta_params=meta_features
         )
         
         if verbose:
@@ -294,10 +333,7 @@ class ZeroTune:
             all_results=all_results,
             model_type=self.model_type
         )
-        
-        # Save updated knowledge base
         save_knowledge_base(self.knowledge_base, self.kb_path, self.model_type)
-        
         return best_params, best_score, final_model
     
     def build_knowledge_base(

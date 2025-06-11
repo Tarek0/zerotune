@@ -66,6 +66,10 @@ def main(args: Optional[List[str]] = None) -> int:
         "--n-iter", dest="n_iter", type=int, default=CONFIG["defaults"]["n_iter"],
         help=f"Number of iterations for optimization (default: {CONFIG['defaults']['n_iter']})"
     )
+    predict_parser.add_argument(
+        "--no-optimize", action="store_true",
+        help="If set, only use the best config from similar datasets (zero-shot, no search). Default is to run iterative HPO."
+    )
     
     # Train command
     train_parser = subparsers.add_parser("train", help="Build a knowledge base for ZeroTune")
@@ -177,11 +181,15 @@ def main(args: Optional[List[str]] = None) -> int:
             zt = ZeroTune(model_type=args.model, kb_path=os.path.join(output_root, "kb.json"))
             
             # Optimize hyperparameters
-            print("Optimizing hyperparameters...")
+            if args.no_optimize:
+                print("Predicting hyperparameters using zero-shot (no further optimization)...")
+            else:
+                print("Optimizing hyperparameters...")
             best_params, best_score, model = zt.optimize(
                 X, y, 
                 n_iter=args.n_iter, 
-                verbose=True
+                verbose=True,
+                optimize=not args.no_optimize
             )
             
             # Display results
