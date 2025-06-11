@@ -18,7 +18,7 @@ setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     author="Tarek",
-    author_email="tarek@zerotune.ai",
+    author_email="tareksalhi0@gmail.com",
     url="https://github.com/Tarek0/zerotune",
     packages=find_packages(),
     install_requires=[
