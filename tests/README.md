@@ -1,91 +1,62 @@
-# ZeroTune Tests
+# ZeroTune Test Suite
 
-This directory contains tests for the ZeroTune package. The tests are written using pytest.
+This directory contains the test suite for the ZeroTune package. The test files follow a modular structure that mirrors the organization of the package itself.
 
-## Running the Tests
+## Test Files
 
-You can run the tests using the following command:
+- **test_zerotune.py**: Tests for the main `ZeroTune` class and API, covering initialization, functionality, and end-to-end workflows.
+- **test_zerotune_cli.py**: Tests for the command-line interface functionality.
+- **test_data_loading.py**: Tests for the data loading module, including loading datasets from OpenML and preparing data.
+- **test_feature_extraction.py**: Tests for the feature extraction module, covering dataset meta-parameter calculation.
+- **test_knowledge_base.py**: Tests for the knowledge base module, covering saving, loading, and finding similar datasets.
+- **test_model_configs.py**: Tests for the model configuration module, including parameter settings for different algorithms.
+- **test_optimization.py**: Tests for the optimization module, covering hyperparameter optimization with Optuna.
+
+## Running Tests
+
+To run the test suite, you need to install the required dependencies. You can do this using:
 
 ```bash
-# Run all tests
-poetry run pytest
+# Install ZeroTune in development mode
+pip install -e .
 
-# Run tests with coverage report
-poetry run pytest --cov=zerotune
-
-# Run a specific test file
-poetry run pytest tests/test_zerotune_core.py
-
-# Run a specific test
-poetry run pytest tests/test_zerotune_core.py::TestZeroTuneCore::test_calculate_dataset_meta_parameters
-
-# Run parameterized tests
-poetry run pytest tests/test_predictors.py::TestPredictors::test_custom_model_with_different_features
-
-# Run environment validation tests
-poetry run pytest tests/test_environment.py
+# Install test dependencies
+pip install -r requirements-test.txt
 ```
 
-## Test Categories
+Once the dependencies are installed, you can run the entire test suite with:
 
-The tests are organized into the following categories:
+```bash
+pytest
+```
 
-1. **Core Tests**: Tests for the core functionality of the ZeroTune package.
-   - `test_zerotune_core.py`: Tests for dataset meta-parameter calculation, hyperparameter transformation, and model evaluation functions.
+Or run specific tests or test files with:
 
-2. **Knowledge Base Tests**: Tests for the KnowledgeBase class.
-   - `test_knowledge_base.py`: Tests for creating, managing, and using knowledge bases for model training.
+```bash
+# Run a specific test file
+pytest tests/test_zerotune.py
 
-3. **Predictor Tests**: Tests for the predictor classes.
-   - `test_predictors.py`: Tests for the ZeroTunePredictor and CustomZeroTunePredictor classes.
+# Run a specific test function
+pytest tests/test_zerotune.py::test_zerotune_initialization
 
-4. **Pretrained Model Tests**: Tests for the pretrained models.
-   - `test_pretrained_model.py`: Tests for the included pretrained models like the decision tree classifier.
+# Run with verbose output
+pytest -v
+```
 
-5. **Environment Tests**: Tests for the environment setup.
-   - `test_environment.py`: Tests that validate Python version and installed dependencies.
+## Test Coverage
 
-## Edge Case Tests
+To check test coverage, you can use:
 
-The test suite includes specific tests for edge cases:
+```bash
+pytest --cov=zerotune
+```
 
-- **Empty datasets**: Tests how functions handle datasets with no rows
-- **Single-row datasets**: Tests behavior with datasets containing only one sample
-- **High-dimensional datasets**: Tests performance with datasets having many features
-- **All-categorical datasets**: Tests handling of datasets with categorical features
+## Mocking
 
-## Parameterized Tests
+Many tests use mocking to avoid relying on external services or databases. This makes the tests more reliable and faster to run.
 
-Several tests use pytest's parametrization to test multiple configurations:
-
-- **Multiple model types**: The same test logic applied to different model types
-- **Feature combinations**: Tests with different combinations of features
-- **Target parameter sets**: Tests with different sets of target parameters
-- **Dependency versions**: Tests with various dependency versions
+For example, OpenML data fetching is mocked to avoid making actual API calls during testing.
 
 ## Test Fixtures
 
-Common test fixtures are defined in `conftest.py`, including:
-
-- `small_classification_dataset`: A small classification dataset for testing.
-- `small_regression_dataset`: A small regression dataset for testing.
-- `empty_dataset`: An empty dataset for edge case testing.
-- `single_row_dataset`: A dataset with just one row for edge case testing.
-- `high_dimensional_dataset`: A dataset with many features for performance testing.
-- `all_categorical_dataset`: A dataset with only categorical features.
-- `mock_dataset_meta_parameters`: Mock dataset meta parameters for testing.
-- `decision_tree_param_config`: A parameter configuration for Decision Tree models.
-
-## Adding New Tests
-
-When adding new tests, follow these guidelines:
-
-1. Create test files with the prefix `test_`.
-2. Create test functions with the prefix `test_`.
-3. Group related tests in classes with the prefix `Test`.
-4. Use descriptive names for test functions that clearly indicate what is being tested.
-5. Write detailed docstrings explaining what the test is checking.
-6. Use fixtures from `conftest.py` for common setup.
-7. Consider using parametrized tests for similar test cases.
-8. Add proper edge case tests for robustness.
-9. For slow or resource-intensive tests, use the `@pytest.mark.slow` decorator. 
+The test suite uses pytest fixtures to set up common test objects, such as synthetic datasets and model configurations. These fixtures help reduce code duplication and make tests more focused and readable.
