@@ -258,37 +258,67 @@ def main(args: Optional[List[str]] = None) -> int:
             dataset_id = args.dataset_id
             model_type = args.model
             
-            print(f"Running ZeroTune demonstration with dataset {dataset_id} and model {model_type}")
+            print("\n=== ZeroTune Demo ===")
+            print(f"Model type: {model_type}")
+            print(f"Dataset ID: {dataset_id}")
+            print("\nStep 1: Loading dataset...")
             
             # Fetch and prepare the dataset
-            print(f"Loading dataset {dataset_id} from OpenML...")
             data, target_name, dataset_name = fetch_open_ml_data(dataset_id)
-            print(f"Dataset: {dataset_name}")
+            print(f"✓ Dataset loaded: {dataset_name}")
+            print(f"  - Target variable: {target_name}")
             
             # Prepare the data for modeling
             X, y = prepare_data(data, target_name)
-            print(f"Data shape: {X.shape}, Target shape: {y.shape}")
+            # Convert y to pandas Series if it's not already
+            if not isinstance(y, pd.Series):
+                y = pd.Series(y)
+            
+            print(f"\nStep 2: Data preparation")
+            print(f"✓ Features shape: {X.shape}")
+            print(f"✓ Target distribution: {dict(y.value_counts())}")
             
             # Initialize ZeroTune
+            print("\nStep 3: Initializing ZeroTune")
             zt = ZeroTune(model_type=model_type)
-            print(f"Initialized ZeroTune with model type: {model_type}")
+            print(f"✓ ZeroTune initialized with {model_type}")
+            print(f"  - Supported hyperparameters: {', '.join(zt.model_config['param_config'].keys())}")
             
             # Run optimization
-            print("Running optimization...")
+            print("\nStep 4: Running hyperparameter optimization")
+            print("This step will:")
+            print("  1. Extract dataset meta-features")
+            print("  2. Find similar datasets in the knowledge base")
+            print("  3. Use meta-learning to guide the search")
+            print("  4. Optimize hyperparameters (5 iterations for demo)")
+            
             best_params, best_score, model = zt.optimize(
                 X, y,
                 n_iter=5,  # Reduced iterations for demo
                 verbose=True
             )
             
-            print("\nOptimization results:")
-            print(f"Best parameters: {best_params}")
-            print(f"Best score: {best_score}")
+            print("\nStep 5: Results")
+            print("Best hyperparameters found:")
+            for param, value in best_params.items():
+                print(f"  - {param}: {value}")
+            print(f"\nModel performance:")
+            print(f"  - Validation score: {best_score:.4f}")
             
-            print("\nDemo completed successfully!")
+            # Additional model information
+            print("\nModel details:")
+            print(f"  - Type: {model.__class__.__name__}")
+            print(f"  - Features used: {X.shape[1]}")
+            print(f"  - Training samples: {X.shape[0]}")
+            
+            print("\n✓ Demo completed successfully!")
+            print("\nNext steps:")
+            print("1. Try different model types: --model decision_tree or --model random_forest")
+            print("2. Use your own dataset: zerotune predict --dataset path/to/your/data.csv")
+            print("3. Build a knowledge base: zerotune train --datasets 31 38 44")
             return 0
         except Exception as e:
-            print(f"Error running demo: {str(e)}")
+            print(f"\nError running demo: {str(e)}")
             import traceback
             traceback.print_exc()
             return 1
