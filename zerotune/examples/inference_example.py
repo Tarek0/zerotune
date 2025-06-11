@@ -1,172 +1,230 @@
 """
-Example demonstrating ZeroTune for hyperparameter optimization on a standard dataset.
+Real-world example demonstrating ZeroTune's hyperparameter optimization capabilities.
 
-This example:
-1. Loads the breast cancer dataset
-2. Uses ZeroTune to optimize hyperparameters for multiple model types
-3. Evaluates and compares the models with optimized hyperparameters
-4. Compares against default hyperparameters
+This example shows both zero-shot (instant) and iterative (warm-started) HPO modes
+using a real-world dataset from OpenML.
+
+Example usage:
+    python inference_example.py --dataset 40981 --model xgboost
+    python inference_example.py --dataset 40981 --model xgboost --no-optimize
 """
 
 import os
-import pandas as pd
+import sys
+import argparse
+from typing import Dict, List, Any, Tuple, Optional
 import numpy as np
-from pathlib import Path
-from sklearn.datasets import load_breast_cancer
-from sklearn.model_selection import cross_val_score, StratifiedKFold, train_test_split
-from sklearn.metrics import accuracy_score, roc_auc_score, classification_report
-from sklearn.tree import DecisionTreeClassifier
-from sklearn.ensemble import RandomForestClassifier
-from xgboost import XGBClassifier
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import classification_report
+from sklearn.preprocessing import LabelEncoder
 
-# Import ZeroTune
+# Add parent directory to path if running directly
+if __name__ == "__main__":
+    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
+
 from zerotune import ZeroTune
-from zerotune.core import CONFIG
-from zerotune.core.utils import safe_json_serialize, save_json
+from zerotune.core.config import CONFIG
 
-# Load the breast cancer dataset
-print("Loading breast cancer dataset...")
-data = load_breast_cancer()
-X = pd.DataFrame(data.data, columns=data.feature_names)
-y = pd.Series(data.target)
 
-print(f"Dataset shape: {X.shape}")
-print(f"Number of features: {X.shape[1]}")
-print(f"Class distribution: {y.value_counts().to_dict()}")
-
-# Split data into train and test sets
-X_train, X_test, y_train, y_test = train_test_split(
-    X, y, 
-    test_size=CONFIG["defaults"]["test_size"], 
-    random_state=CONFIG["defaults"]["random_state"]
-)
-
-# Create output directory
-os.makedirs("output", exist_ok=True)
-
-# Try different model types
-model_types = CONFIG["supported"]["models"]
-results = {}
-default_results = {}
-
-print("\n=== Optimizing Hyperparameters ===")
-
-for model_type in model_types:
-    print(f"\n--- {model_type.upper()} ---")
+def load_openml_dataset(
+    dataset_id: int,
+    target_column: Optional[str] = None
+) -> Tuple[pd.DataFrame, pd.Series, str]:
+    """
+    Load a dataset from OpenML.
     
-    # Initialize ZeroTune
-    zt = ZeroTune(model_type=model_type, kb_path=f"output/{model_type}_kb.json")
-    
-    # Optimize hyperparameters
-    print(f"Optimizing hyperparameters for {model_type}...")
-    best_params, best_score, model = zt.optimize(
-        X_train, y_train, n_iter=5, verbose=True  # Reduced iterations for example
-    )
-    
-    # Evaluate on test set
-    y_pred = model.predict(X_test)
-    accuracy = accuracy_score(y_test, y_pred)
+    Args:
+        dataset_id: OpenML dataset ID
+        target_column: Name of the target column (if None, will use the last column)
+        
+    Returns:
+        Tuple of (X, y, dataset_name) where:
+        - X is a DataFrame of features
+        - y is a Series of targets
+        - dataset_name is the name of the dataset
+    """
     try:
-        y_pred_proba = model.predict_proba(X_test)[:, 1]
-        roc_auc = roc_auc_score(y_test, y_pred_proba)
-    except:
-        roc_auc = None
-    
-    # Store results
-    results[model_type] = {
-        "params": best_params,
-        "accuracy": accuracy,
-        "roc_auc": roc_auc,
-        "model": model
-    }
-    
-    print(f"\nResults for {model_type}:")
-    print(f"Accuracy: {accuracy:.4f}")
-    if roc_auc:
-        print(f"ROC AUC: {roc_auc:.4f}")
-    print("Best hyperparameters:", best_params)
-
-    # Compare with default model
-    print("\nComparing with default hyperparameters...")
-    if model_type == "decision_tree":
-        default_model = DecisionTreeClassifier(random_state=CONFIG["defaults"]["random_state"])
-    elif model_type == "random_forest":
-        default_model = RandomForestClassifier(random_state=CONFIG["defaults"]["random_state"])
-    elif model_type == "xgboost":
-        default_model = XGBClassifier(
-            random_state=CONFIG["defaults"]["random_state"],
-            enable_categorical=True
+        import openml
+    except ImportError:
+        raise ImportError(
+            "OpenML package not found. Please install it with: pip install openml"
         )
     
-    default_model.fit(X_train, y_train)
-    default_y_pred = default_model.predict(X_test)
-    default_accuracy = accuracy_score(y_test, default_y_pred)
+    # Load dataset
+    dataset = openml.datasets.get_dataset(dataset_id)
+    X, y, categorical_indicator, attribute_names = dataset.get_data(
+        dataset_format="dataframe",
+        target=target_column
+    )
+    
+    # Handle categorical features
+    for col in X.columns:
+        if categorical_indicator[attribute_names.index(col)]:
+            X[col] = X[col].astype("category")
+    
+    # Handle categorical target
+    if y.dtype == "object" or y.dtype.name == "category":
+        le = LabelEncoder()
+        y = pd.Series(le.fit_transform(y), index=y.index, name=y.name)
+    
+    return X, y, dataset.name
+
+
+def evaluate_model(
+    model: Any,
+    X_test: pd.DataFrame,
+    y_test: pd.Series
+) -> Tuple[float, Dict[str, Any]]:
+    """
+    Evaluate a model on test data.
+    
+    Args:
+        model: Trained model with predict method
+        X_test: Test features
+        y_test: Test targets
+        
+    Returns:
+        Tuple of (accuracy, classification_report)
+    """
+    y_pred = model.predict(X_test)
+    accuracy = (y_pred == y_test).mean()
+    report = classification_report(y_test, y_pred, output_dict=True)
+    return accuracy, report
+
+
+def parse_args() -> argparse.Namespace:
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(
+        description="Run ZeroTune on a real-world dataset from OpenML"
+    )
+    parser.add_argument(
+        "--dataset",
+        type=int,
+        required=True,
+        help="OpenML dataset ID"
+    )
+    parser.add_argument(
+        "--model",
+        type=str,
+        choices=CONFIG["supported"]["models"],
+        default="xgboost",
+        help="Model type to use"
+    )
+    parser.add_argument(
+        "--target",
+        type=str,
+        help="Name of the target column (if None, will use the last column)"
+    )
+    parser.add_argument(
+        "--no-optimize",
+        action="store_true",
+        help="Use zero-shot mode (no iterative optimization)"
+    )
+    parser.add_argument(
+        "--n-iter",
+        type=int,
+        default=10,
+        help="Number of optimization iterations (ignored in zero-shot mode)"
+    )
+    return parser.parse_args()
+
+
+def main() -> None:
+    """Main execution function for the example."""
+    # Parse command line arguments
+    args = parse_args()
+    
+    # Create output directory
+    os.makedirs("output", exist_ok=True)
+    
+    # Load dataset
+    print(f"\nLoading dataset {args.dataset} from OpenML...")
+    try:
+        X, y, dataset_name = load_openml_dataset(args.dataset, args.target)
+    except Exception as e:
+        print(f"Error loading dataset: {str(e)}")
+        sys.exit(1)
+    
+    print(f"Dataset: {dataset_name}")
+    print(f"Features shape: {X.shape}")
+    print(f"Target distribution: {y.value_counts().to_dict()}")
+    
+    # Split into train and test sets
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y,
+        test_size=CONFIG["defaults"]["test_size"],
+        random_state=CONFIG["defaults"]["random_state"]
+    )
+    
+    print(f"\nTraining set size: {X_train.shape[0]}")
+    print(f"Test set size: {X_test.shape[0]}")
+    
+    # Initialize ZeroTune
+    print(f"\nInitializing ZeroTune with {args.model}...")
+    zt = ZeroTune(model_type=args.model, kb_path="output/kb.json")
+    
+    # Run hyperparameter optimization
+    mode = "zero-shot" if args.no_optimize else "iterative"
+    print(f"\nRunning {mode} hyperparameter optimization...")
     
     try:
-        default_y_pred_proba = default_model.predict_proba(X_test)[:, 1]
-        default_roc_auc = roc_auc_score(y_test, default_y_pred_proba)
-    except:
-        default_roc_auc = None
-    
-    default_results[model_type] = {
-        "accuracy": default_accuracy,
-        "roc_auc": default_roc_auc
-    }
-    
-    print(f"Default model accuracy: {default_accuracy:.4f}")
-    if default_roc_auc:
-        print(f"Default model ROC AUC: {default_roc_auc:.4f}")
-    
-    # Calculate improvement
-    acc_improvement = ((accuracy - default_accuracy) / default_accuracy) * 100
-    print(f"Accuracy improvement: {acc_improvement:.2f}%")
-    
-    if roc_auc and default_roc_auc:
-        auc_improvement = ((roc_auc - default_roc_auc) / default_roc_auc) * 100
-        print(f"ROC AUC improvement: {auc_improvement:.2f}%")
+        best_params, best_score, model = zt.optimize(
+            X_train, y_train,
+            n_iter=args.n_iter,
+            verbose=True,
+            optimize=not args.no_optimize
+        )
+        
+        # Evaluate on test set
+        test_accuracy, test_report = evaluate_model(model, X_test, y_test)
+        
+        # Print results
+        print(f"\nResults for {args.model} ({mode} mode):")
+        print(f"Best validation score: {best_score:.4f}")
+        print(f"Test accuracy: {test_accuracy:.4f}")
+        print("\nBest hyperparameters:")
+        for param, value in best_params.items():
+            print(f"  {param}: {value}")
+        
+        # Save results
+        results = {
+            "dataset": dataset_name,
+            "dataset_id": args.dataset,
+            "model_type": args.model,
+            "mode": mode,
+            "best_params": best_params,
+            "best_score": best_score,
+            "test_accuracy": test_accuracy,
+            "test_report": test_report
+        }
+        
+        # Save to JSON
+        import json
+        output_file = f"output/{dataset_name}_{args.model}_{mode}_results.json"
+        with open(output_file, "w") as f:
+            json.dump(results, f, indent=2)
+        print(f"\nResults saved to {output_file}")
+        
+        # Save to text file for easy reading
+        output_txt = f"output/{dataset_name}_{args.model}_{mode}_results.txt"
+        with open(output_txt, "w") as f:
+            f.write(f"Dataset: {dataset_name} (ID: {args.dataset})\n")
+            f.write(f"Model: {args.model}\n")
+            f.write(f"Mode: {mode}\n\n")
+            f.write(f"Best validation score: {best_score:.4f}\n")
+            f.write(f"Test accuracy: {test_accuracy:.4f}\n\n")
+            f.write("Best hyperparameters:\n")
+            for param, value in best_params.items():
+                f.write(f"  {param}: {value}\n")
+            f.write("\nClassification report:\n")
+            f.write(classification_report(y_test, model.predict(X_test)))
+        print(f"Detailed results saved to {output_txt}")
+        
+    except Exception as e:
+        print(f"Error during optimization: {str(e)}")
+        sys.exit(1)
 
-# Save results to JSON file
-output_results = {
-    "optimized": {model: {
-        "params": results[model]["params"],
-        "accuracy": results[model]["accuracy"],
-        "roc_auc": results[model]["roc_auc"]
-    } for model in model_types},
-    "default": default_results
-}
-save_json(output_results, "output/comparison_results.json")
-print("\nResults saved to output/comparison_results.json")
 
-# Print comparison table
-print("\n\n=== Model Comparison ===\n")
-print(f"{'Model Type':<15} {'Optimized Accuracy':<20} {'Default Accuracy':<20} {'Improvement':<15}")
-print("-" * 70)
-
-for model_type in model_types:
-    opt_acc = results[model_type]['accuracy']
-    def_acc = default_results[model_type]['accuracy']
-    imp = ((opt_acc - def_acc) / def_acc) * 100
-    print(f"{model_type:<15} {opt_acc:<20.4f} {def_acc:<20.4f} {imp:<15.2f}%")
-
-if all(results[mt]['roc_auc'] is not None for mt in model_types):
-    print("\n")
-    print(f"{'Model Type':<15} {'Optimized ROC AUC':<20} {'Default ROC AUC':<20} {'Improvement':<15}")
-    print("-" * 70)
-    
-    for model_type in model_types:
-        opt_auc = results[model_type]['roc_auc']
-        def_auc = default_results[model_type]['roc_auc']
-        imp = ((opt_auc - def_auc) / def_auc) * 100
-        print(f"{model_type:<15} {opt_auc:<20.4f} {def_auc:<20.4f} {imp:<15.2f}%")
-
-# Find the best model
-best_model_type = max(results.items(), key=lambda x: x[1]['accuracy'])[0]
-print(f"\nBest model type: {best_model_type}")
-print(f"Best model accuracy: {results[best_model_type]['accuracy']:.4f}")
-if results[best_model_type]['roc_auc']:
-    print(f"Best model ROC AUC: {results[best_model_type]['roc_auc']:.4f}")
-
-# Print detailed classification report for the best model
-print("\nClassification report for the best model:")
-y_pred = results[best_model_type]['model'].predict(X_test)
-print(classification_report(y_test, y_pred)) 
+if __name__ == "__main__":
+    main() 
