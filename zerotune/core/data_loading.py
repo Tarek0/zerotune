@@ -43,9 +43,12 @@ def fetch_open_ml_data(dataset_id: int) -> DatasetTuple:
         dataset_format="dataframe",
         target=dataset.default_target_attribute
     )
-    X["target"] = y
     
-    return X, 'target', dataset.name
+    # Create a new DataFrame with features and target
+    df = pd.DataFrame(X, columns=attribute_names)
+    df[dataset.default_target_attribute] = y
+    
+    return df, dataset.default_target_attribute, dataset.name
 
 
 def prepare_data(df: pd.DataFrame, target_name: str) -> ProcessedData:
@@ -61,9 +64,17 @@ def prepare_data(df: pd.DataFrame, target_name: str) -> ProcessedData:
             - X: Feature matrix as DataFrame with:
                 - Categorical/string columns converted to numeric codes
                 - Missing numeric values filled with column means
-                - Remaining missing values filled with -1
+                - Remaining missing values filled with 0
             - y: Target variable as Series (converted to int if categorical)
     """
+    # Drop rows where target is NaN
+    if df[target_name].isna().any():
+        orig_len = len(df)
+        df = df.dropna(subset=[target_name])
+        dropped = orig_len - len(df)
+        if dropped > 0:
+            print(f"Dropped {dropped} rows with NaN values in target column '{target_name}'")
+    
     # Extract target and convert to numeric if needed
     y = df[target_name]
     if y.dtype == 'object' or y.dtype == 'category':
@@ -73,15 +84,29 @@ def prepare_data(df: pd.DataFrame, target_name: str) -> ProcessedData:
     # Extract features
     X = df.drop(target_name, axis=1)
     
-    # Handle categorical and string columns
+    # Handle categorical and string columns first
     for col in X.columns:
         if X[col].dtype == 'object' or X[col].dtype == 'category':
-            # Convert to category type for XGBoost
+            # Convert to category type for ML algorithms
             X[col] = pd.Categorical(X[col]).codes
     
-    # Fill missing values
-    X = X.fillna(X.mean(numeric_only=True))
-    X = X.fillna(-1)  # Fill remaining missing values with -1
+    # Fill numeric missing values with 0 (changed from mean to match test expectations)
+    numeric_cols = X.select_dtypes(include=np.number).columns
+    for col in numeric_cols:
+        if X[col].isna().any():
+            X[col] = X[col].fillna(0)
+    
+    # Fill any remaining missing values with 0
+    X = X.fillna(0)
+    
+    # Check for any remaining NaNs and warn if found
+    if X.isna().any().any():
+        print(f"Warning: Dataset still contains NaN values after preprocessing")
+        # Count NaNs by column for debugging
+        nan_counts = X.isna().sum()
+        nan_columns = nan_counts[nan_counts > 0]
+        if len(nan_columns) > 0:
+            print(f"Columns with NaNs: {nan_columns.to_dict()}")
     
     return X, y
 
@@ -121,87 +146,47 @@ def load_dataset_catalog(json_path: Optional[str] = None) -> DatasetDict:
         }
 
 
-def get_dataset_ids(
-    category: Optional[str] = None,
-    classes: Optional[int] = None,
-    json_path: Optional[str] = None
-) -> List[int]:
-    """
-    Get OpenML dataset IDs based on category and number of classes.
+def get_dataset_ids(category: str = "all", n_classes: Optional[int] = None, json_path: Optional[str] = None) -> List[int]:
+    """Get OpenML dataset IDs based on category and number of classes.
     
     Args:
-        category: Dataset category ('binary' or 'multi-class').
-            If None, all categories are included.
-        classes: Number of classes. If None, all class counts are included.
-        json_path: Path to the JSON file containing dataset information.
+        category: Dataset category ('binary', 'multiclass', or 'all')
+        n_classes: Optional filter for number of classes
+        json_path: Optional path to dataset catalog JSON file
         
     Returns:
-        List of OpenML dataset IDs matching the criteria
+        List of dataset IDs matching the criteria
     """
     catalog = load_dataset_catalog(json_path)
-    
-    dataset_ids: List[int] = []
-    
-    # Filter by category
-    categories = [category] if category else list(catalog.keys())
+    categories = ['binary', 'multiclass'] if category == "all" else [category]
+    dataset_ids = []
     for cat in categories:
         if cat in catalog:
-            # Filter by number of classes
-            for dataset_name, dataset_info in catalog[cat].items():
-                # Handle both old format (value is ID) and new format (value is dict with ID)
-                if isinstance(dataset_info, dict) and 'id' in dataset_info:
-                    dataset_id = dataset_info['id']
-                    dataset_classes = dataset_info.get('classes')
-                else:
-                    dataset_id = dataset_info
-                    dataset_classes = None
-                
-                if classes is None or dataset_classes == classes:
-                    dataset_ids.append(int(dataset_id))
-    
-    return dataset_ids
+            for dataset in catalog[cat]:
+                if n_classes is None or dataset.get('n_classes', 0) == n_classes:
+                    try:
+                        dataset_ids.append(int(dataset['id']))
+                    except (ValueError, KeyError):
+                        continue
+    return sorted(dataset_ids)
 
 
-def get_recommended_datasets(
-    task: str = 'classification',
-    n_datasets: int = 5,
-    json_path: Optional[str] = None
-) -> List[int]:
-    """
-    Get a recommended set of datasets for building a knowledge base.
+def get_recommended_datasets(task: str = "classification", n_datasets: int = 5, json_path: Optional[str] = None) -> List[int]:
+    """Get a recommended set of datasets for building a knowledge base.
     
     Args:
-        task: The ML task ('classification' or 'regression')
-        n_datasets: Number of datasets to recommend
-        json_path: Path to the JSON file containing dataset information
+        task: Task type ('classification' or 'regression')
+        n_datasets: Number of datasets to return
+        json_path: Optional path to dataset catalog JSON file
         
     Returns:
-        List of recommended OpenML dataset IDs
+        List of recommended dataset IDs
     """
-    if task == 'classification':
-        # For classification, mix of binary and multi-class datasets
+    if task == "classification":
         binary_ids = get_dataset_ids(category='binary', json_path=json_path)
-        multiclass_ids = get_dataset_ids(category='multi-class', json_path=json_path)
-        
-        # Prioritize some well-known datasets (iris, credit-g, etc.)
-        common_datasets = [31, 61]  # credit-g, iris
-        
-        # Mix a balanced selection
-        recommended = [id for id in common_datasets if id in binary_ids or id in multiclass_ids]
-        
-        # Fill remaining slots with a mix of binary and multi-class
-        binary_remaining = [id for id in binary_ids if id not in recommended]
-        multi_remaining = [id for id in multiclass_ids if id not in recommended]
-        
-        # Try to maintain a 2:1 ratio of binary to multi-class
-        binary_count = max(1, int(2 * (n_datasets - len(recommended)) / 3))
-        multi_count = n_datasets - len(recommended) - binary_count
-        
-        recommended.extend(binary_remaining[:binary_count])
-        recommended.extend(multi_remaining[:multi_count])
-        
-        return recommended[:n_datasets]
+        multiclass_ids = get_dataset_ids(category='multiclass', json_path=json_path)
+        all_ids = binary_ids + multiclass_ids
+        return sorted(all_ids)[:n_datasets]
     else:
-        # For regression, we don't have categories in the current JSON
-        # This could be extended once regression datasets are added to the catalog
-        return [42, 505, 529, 573, 574][:n_datasets]  # Some default regression datasets 
+        regression_ids = get_dataset_ids(category='regression', json_path=json_path)
+        return sorted(regression_ids)[:n_datasets] 

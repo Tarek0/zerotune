@@ -4,9 +4,13 @@ This directory contains pretrained models that can be used for zero-shot hyperpa
 
 ## Available Models
 
-### Decision Tree Classifier (`decision_tree_classifier.joblib`)
+### Decision Tree
 
-This model predicts optimal hyperparameters for scikit-learn's `DecisionTreeClassifier`. It predicts the following hyperparameters:
+* Binary classification: `decision_tree_binary_classifier.joblib`
+* Multi-class classification: `decision_tree_multiclass_classifier.joblib`
+* Regression: `decision_tree_regressor.joblib`
+
+This model predicts optimal hyperparameters for scikit-learn's Decision Tree models. It predicts the following hyperparameters:
 
 - `max_depth`: Maximum depth of the decision tree
 - `min_samples_split`: Minimum number of samples required to split an internal node
@@ -21,18 +25,22 @@ from zerotune import ZeroTunePredictor
 # Load the model
 predictor = ZeroTunePredictor(model_name="decision_tree")
 
-# Predict hyperparameters for your dataset
+# Predict hyperparameters for your dataset (classification or regression)
 hyperparams = predictor.predict(X, y)
 
 # Use the hyperparameters
-from sklearn.tree import DecisionTreeClassifier
-model = DecisionTreeClassifier(**hyperparams)
+from sklearn.tree import DecisionTreeClassifier  # or DecisionTreeRegressor for regression
+model = DecisionTreeClassifier(**hyperparams)  # or DecisionTreeRegressor for regression
 model.fit(X, y)
 ```
 
-### Random Forest Classifier (`random_forest_classifier.joblib`)
+### Random Forest
 
-This model predicts optimal hyperparameters for scikit-learn's `RandomForestClassifier`. It predicts the following hyperparameters:
+* Binary classification: `random_forest_binary_classifier.joblib`
+* Multi-class classification: `random_forest_multiclass_classifier.joblib`
+* Regression: `random_forest_regressor.joblib`
+
+This model predicts optimal hyperparameters for scikit-learn's Random Forest models. It predicts the following hyperparameters:
 
 - `n_estimators`: Number of trees in the forest
 - `max_depth`: Maximum depth of the trees
@@ -48,18 +56,22 @@ from zerotune import ZeroTunePredictor
 # Load the model
 predictor = ZeroTunePredictor(model_name="random_forest")
 
-# Predict hyperparameters for your dataset
+# Predict hyperparameters for your dataset (classification or regression)
 hyperparams = predictor.predict(X, y)
 
 # Use the hyperparameters
-from sklearn.ensemble import RandomForestClassifier
-model = RandomForestClassifier(**hyperparams)
+from sklearn.ensemble import RandomForestClassifier  # or RandomForestRegressor for regression
+model = RandomForestClassifier(**hyperparams)  # or RandomForestRegressor for regression
 model.fit(X, y)
 ```
 
-### XGBoost Classifier (`xgboost_classifier.joblib`)
+### XGBoost
 
-This model predicts optimal hyperparameters for XGBoost's `XGBClassifier`. It predicts the following hyperparameters:
+* Binary classification: `xgboost_binary_classifier.joblib`
+* Multi-class classification: `xgboost_multiclass_classifier.joblib`
+* Regression: `xgboost_regressor.joblib`
+
+This model predicts optimal hyperparameters for XGBoost models. It predicts the following hyperparameters:
 
 - `n_estimators`: Number of gradient boosted trees
 - `max_depth`: Maximum depth of the trees
@@ -76,18 +88,18 @@ from zerotune import ZeroTunePredictor
 # Load the model
 predictor = ZeroTunePredictor(model_name="xgboost")
 
-# Predict hyperparameters for your dataset
+# Predict hyperparameters for your dataset (classification or regression)
 hyperparams = predictor.predict(X, y)
 
 # Use the hyperparameters
-from xgboost import XGBClassifier
-model = XGBClassifier(**hyperparams)
+from xgboost import XGBClassifier  # or XGBRegressor for regression
+model = XGBClassifier(**hyperparams)  # or XGBRegressor for regression
 model.fit(X, y)
 ```
 
 #### Performance
 
-The models are trained to optimize the ROC AUC metric for classification tasks. They typically provide a significant improvement over the default hyperparameters, especially for datasets with:
+The models are trained to optimize the ROC AUC metric for classification tasks and R² score for regression tasks. They typically provide a significant improvement over the default hyperparameters, especially for datasets with:
 
 - High-dimensional feature spaces
 - Class imbalance
@@ -97,8 +109,8 @@ The models are trained to optimize the ROC AUC metric for classification tasks. 
 
 These models were trained on a diverse set of datasets, including:
 - Synthetic datasets with varying characteristics
-- Classification datasets from OpenML
-- Real-world classification problems
+- Classification and regression datasets from OpenML
+- Real-world problems
 
 ## Adding Your Own Models
 

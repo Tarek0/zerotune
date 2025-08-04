@@ -31,377 +31,204 @@ from zerotune.core import CONFIG
 from zerotune.core.utils import save_json, load_json
 
 
-def main(args: Optional[List[str]] = None) -> int:
-    """
-    Main entry point for ZeroTune CLI.
-    
-    Args:
-        args: Command line arguments (defaults to sys.argv if None)
-        
-    Returns:
-        int: Exit code
-    """
-    parser = argparse.ArgumentParser(
-        description="ZeroTune: Hyperparameter optimization using meta-learning"
-    )
-    
-    subparsers = parser.add_subparsers(dest="command", help="Command to execute")
+def main() -> int:
+    """Main entry point for the CLI."""
+    parser = argparse.ArgumentParser(description="ZeroTune: Zero-shot hyperparameter optimization")
+    subparsers = parser.add_subparsers(dest="command", help="Command to run", required=True)
     
     # Predict command
     predict_parser = subparsers.add_parser("predict", help="Predict hyperparameters for a dataset")
-    predict_parser.add_argument(
-        "--dataset", required=True, 
-        help="Dataset to predict for. Can be an OpenML ID, path to CSV file, or 'custom'"
-    )
-    predict_parser.add_argument(
-        "--model", default=CONFIG["defaults"]["model_type"],
-        choices=CONFIG["supported"]["models"],
-        help=f"Model to predict hyperparameters for (default: {CONFIG['defaults']['model_type']})"
-    )
-    predict_parser.add_argument(
-        "--output-dir", dest="output_dir", default="./output/",
-        help="Output directory where models are stored. You can provide a custom path like './output/my_experiment/'."
-    )
-    predict_parser.add_argument(
-        "--n-iter", dest="n_iter", type=int, default=CONFIG["defaults"]["n_iter"],
-        help=f"Number of iterations for optimization (default: {CONFIG['defaults']['n_iter']})"
-    )
-    predict_parser.add_argument(
-        "--no-optimize", action="store_true",
-        help="If set, only use the best config from similar datasets (zero-shot, no search). Default is to run iterative HPO."
-    )
+    predict_parser.add_argument("--dataset-id", type=int, help="OpenML dataset ID")
+    predict_parser.add_argument("--data-path", type=str, help="Path to custom dataset CSV file")
+    predict_parser.add_argument("--target", type=str, help="Target column name for custom dataset")
+    predict_parser.add_argument("--model-type", type=str, choices=["decision_tree", "random_forest", "xgboost"], default="random_forest", help="Model type to optimize")
+    predict_parser.add_argument("--zero-shot", action="store_true", help="Use zero-shot mode instead of iterative")
     
     # Train command
-    train_parser = subparsers.add_parser("train", help="Build a knowledge base for ZeroTune")
-    train_parser.add_argument(
-        "--datasets", nargs="+", type=int, required=True,
-        help="List of OpenML dataset IDs to use for training"
-    )
-    train_parser.add_argument(
-        "--model", default=CONFIG["defaults"]["model_type"],
-        choices=CONFIG["supported"]["models"],
-        help=f"Model to train for (default: {CONFIG['defaults']['model_type']})"
-    )
-    train_parser.add_argument(
-        "--n-iter", dest="n_iter", type=int, default=CONFIG["defaults"]["n_iter"],
-        help=f"Number of iterations for each dataset (default: {CONFIG['defaults']['n_iter']})"
-    )
-    train_parser.add_argument(
-        "--output-dir", dest="output_dir",
-        help="Output directory (defaults to ./output/YYYYMMDD_HHMMSS/). You can provide a custom name like './output/my_experiment/'."
-    )
+    train_parser = subparsers.add_parser("train", help="Train a model with optimized hyperparameters")
+    train_parser.add_argument("--dataset-id", type=int, required=True, help="OpenML dataset ID")
+    train_parser.add_argument("--model-type", type=str, choices=["decision_tree", "random_forest", "xgboost"], default="random_forest", help="Model type to optimize")
+    train_parser.add_argument("--zero-shot", action="store_true", help="Use zero-shot mode instead of iterative")
     
     # Demo command
-    demo_parser = subparsers.add_parser("demo", help="Run a demonstration of ZeroTune")
-    demo_parser.add_argument(
-        "--dataset-id", dest="dataset_id", type=int, default=40981,
-        help="OpenML dataset ID to use for the demo (default: 40981)"
-    )
-    demo_parser.add_argument(
-        "--model", default=CONFIG["defaults"]["model_type"],
-        choices=CONFIG["supported"]["models"],
-        help=f"Model to optimize in the demo (default: {CONFIG['defaults']['model_type']})"
-    )
+    demo_parser = subparsers.add_parser("demo", help="Run a demo optimization")
+    demo_parser.add_argument("--model-type", type=str, choices=["decision_tree", "random_forest", "xgboost"], default="random_forest", help="Model type to optimize")
+    demo_parser.add_argument("--zero-shot", action="store_true", help="Use zero-shot mode instead of iterative")
     
     # Datasets command
-    datasets_parser = subparsers.add_parser("datasets", help="List available datasets from the catalog")
+    datasets_parser = subparsers.add_parser("datasets", help="List available datasets")
+    datasets_parser.add_argument("--category", type=str, choices=["binary", "multiclass", "all"], default="all", help="Dataset category to list")
     
-    # Create a mutually exclusive group for listing vs recommendations
-    datasets_display_group = datasets_parser.add_mutually_exclusive_group()
-    datasets_display_group.add_argument(
-        "--list", action="store_true",
-        help="List all available datasets instead of showing recommendations"
-    )
-    datasets_display_group.add_argument(
-        "--default", action="store_true",
-        help="Show recommended datasets (this is the default behavior)"
-    )
-    
-    datasets_parser.add_argument(
-        "--category", choices=["binary", "multi-class", "all"],
-        default="all", help="Filter datasets by category"
-    )
-    datasets_parser.add_argument(
-        "--classes", type=int, help="Filter by number of classes"
-    )
-    datasets_parser.add_argument(
-        "--count", type=int, default=5,
-        help="Number of recommended datasets to show"
-    )
-    
-    args = parser.parse_args(args)
-    
-    # Set experiment ID and paths
-    if hasattr(args, "output_dir") and args.output_dir:
-        output_root = args.output_dir
-        if not output_root.endswith("/"):
-            output_root += "/"
-        # If only a name is provided without a path, put it in the output directory
-        if not os.path.dirname(output_root):
-            output_root = f"./output/{output_root}"
-    else:
-        exp_id = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_root = f"./output/{exp_id}/"
-    
-    os.makedirs(output_root, exist_ok=True)
-    
-    # Execute the chosen command
-    if args.command == "predict":
-        try:
-            if args.dataset.isdigit():
-                # OpenML dataset ID
-                dataset_id = int(args.dataset)
-                print(f"Fetching OpenML dataset {dataset_id}...")
-                df, target_name, dataset_name = fetch_open_ml_data(dataset_id)
-                X, y = prepare_data(df, target_name)
-                print(f"Dataset: {dataset_name}")
-            elif args.dataset == "custom":
-                # Example custom dataset
-                print("Using example custom dataset...")
-                # Generate a simple synthetic dataset
-                from sklearn.datasets import make_classification
-                X, y = make_classification(
-                    n_samples=1000, n_features=20, n_informative=10,
-                    n_redundant=5, n_classes=2, random_state=CONFIG["defaults"]["random_state"]
-                )
-                X = pd.DataFrame(X)
-                dataset_name = "custom_dataset"
+    try:
+        args = parser.parse_args()
+        
+        if args.command == "predict":
+            if args.dataset_id is not None:
+                return predict_openml(args.dataset_id, args.model_type, args.zero_shot)
+            elif args.data_path is not None and args.target is not None:
+                return predict_custom(args.data_path, args.target, args.model_type, args.zero_shot)
             else:
-                # Path to CSV file
-                print(f"Loading dataset from {args.dataset}...")
-                df = pd.read_csv(args.dataset)
-                # Assume last column is target
-                target_name = df.columns[-1]
-                X = df.drop(target_name, axis=1)
-                y = df[target_name]
-                dataset_name = os.path.basename(args.dataset)
-            
-            # Initialize ZeroTune with model type
-            print(f"Initializing ZeroTune with model type: {args.model}")
-            zt = ZeroTune(model_type=args.model, kb_path=os.path.join(output_root, "kb.json"))
-            
-            # Optimize hyperparameters
-            if args.no_optimize:
-                print("Predicting hyperparameters using zero-shot (no further optimization)...")
-            else:
-                print("Optimizing hyperparameters...")
-            best_params, best_score, model = zt.optimize(
-                X, y, 
-                n_iter=args.n_iter, 
-                verbose=True,
-                optimize=not args.no_optimize
-            )
-            
-            # Display results
-            print("\n=== Best Hyperparameters ===")
-            for param, value in best_params.items():
-                print(f"{param}: {value}")
-            print(f"\nScore: {best_score}")
-            
-            # Save results
-            results = {
-                "dataset": dataset_name,
-                "model": args.model,
-                "score": best_score,
-                "hyperparameters": best_params,
-                "timestamp": datetime.datetime.now().isoformat()
-            }
-            results_file = os.path.join(output_root, f"{dataset_name}_{args.model}_results.json")
-            save_json(results, results_file)
-            
-            # Also save a readable text file
-            txt_file = os.path.join(output_root, f"{dataset_name}_{args.model}_results.txt")
-            with open(txt_file, 'w') as f:
-                f.write(f"Dataset: {dataset_name}\n")
-                f.write(f"Model: {args.model}\n")
-                f.write(f"Score: {best_score}\n\n")
-                f.write("Hyperparameters:\n")
-                for param, value in best_params.items():
-                    f.write(f"{param}: {value}\n")
-            
-            print(f"\nResults saved to {results_file} and {txt_file}")
-            return 0
-            
-        except Exception as e:
-            print(f"Error predicting hyperparameters: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            return 1
-            
-    elif args.command == "train":
-        # Build a knowledge base
-        try:
-            print(f"Building knowledge base for model type: {args.model}")
-            
-            # Initialize ZeroTune
-            kb_path = os.path.join(output_root, "kb.json")
-            zt = ZeroTune(model_type=args.model, kb_path=kb_path)
-            
-            # Build knowledge base
-            print(f"Using {len(args.datasets)} datasets with {args.n_iter} iterations each")
-            knowledge_base = zt.build_knowledge_base(
-                dataset_ids=args.datasets,
-                n_iter=args.n_iter,
-                verbose=True
-            )
-            
-            print("\nKnowledge base built successfully!")
-            print(f"Knowledge base saved to: {kb_path}")
-            
-            # Print summary
-            print(f"\nDatasets in knowledge base: {len(knowledge_base.get('datasets', []))}")
-            print(f"Total results: {len(knowledge_base.get('results', []))}")
-            
-            return 0
-        except Exception as e:
-            print(f"Error building knowledge base: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            return 1
-    
-    elif args.command == "demo":
-        # Run a demonstration
-        try:
-            # Use the Australian credit dataset as a demo
-            dataset_id = args.dataset_id
-            model_type = args.model
-            
-            print("\n=== ZeroTune Demo ===")
-            print(f"Model type: {model_type}")
-            print(f"Dataset ID: {dataset_id}")
-            print("\nStep 1: Loading dataset...")
-            
-            # Fetch and prepare the dataset
-            data, target_name, dataset_name = fetch_open_ml_data(dataset_id)
-            print(f"✓ Dataset loaded: {dataset_name}")
-            print(f"  - Target variable: {target_name}")
-            
-            # Prepare the data for modeling
-            X, y = prepare_data(data, target_name)
-            # Convert y to pandas Series if it's not already
-            if not isinstance(y, pd.Series):
-                y = pd.Series(y)
-            
-            print(f"\nStep 2: Data preparation")
-            print(f"✓ Features shape: {X.shape}")
-            print(f"✓ Target distribution: {dict(y.value_counts())}")
-            
-            # Initialize ZeroTune
-            print("\nStep 3: Initializing ZeroTune")
-            zt = ZeroTune(model_type=model_type)
-            print(f"✓ ZeroTune initialized with {model_type}")
-            print(f"  - Supported hyperparameters: {', '.join(zt.model_config['param_config'].keys())}")
-            
-            # Run optimization
-            print("\nStep 4: Running hyperparameter optimization")
-            print("This step will:")
-            print("  1. Extract dataset meta-features")
-            print("  2. Find similar datasets in the knowledge base")
-            print("  3. Use meta-learning to guide the search")
-            print("  4. Optimize hyperparameters (5 iterations for demo)")
-            
-            best_params, best_score, model = zt.optimize(
-                X, y,
-                n_iter=5,  # Reduced iterations for demo
-                verbose=True
-            )
-            
-            print("\nStep 5: Results")
-            print("Best hyperparameters found:")
-            for param, value in best_params.items():
-                print(f"  - {param}: {value}")
-            print(f"\nModel performance:")
-            print(f"  - Validation score: {best_score:.4f}")
-            
-            # Additional model information
-            print("\nModel details:")
-            print(f"  - Type: {model.__class__.__name__}")
-            print(f"  - Features used: {X.shape[1]}")
-            print(f"  - Training samples: {X.shape[0]}")
-            
-            print("\n✓ Demo completed successfully!")
-            print("\nNext steps:")
-            print("1. Try different model types: --model decision_tree or --model random_forest")
-            print("2. Use your own dataset: zerotune predict --dataset path/to/your/data.csv")
-            print("3. Build a knowledge base: zerotune train --datasets 31 38 44")
-            return 0
-        except Exception as e:
-            print(f"\nError running demo: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            return 1
-    
-    elif args.command == "datasets":
-        # Display recommended datasets by default or list all datasets if --list flag is used
-        if args.list:
-            print("Listing available datasets...")
-            
-            # Get dataset IDs based on category
-            category = None if args.category == "all" else args.category
-            dataset_ids = get_dataset_ids(category=category, classes=args.classes)
-            
-            if not dataset_ids:
-                print("No datasets found matching the criteria.")
-                return 0
-            
-            # Group datasets by category for better readability
-            datasets_by_category = {}
-            catalog = load_dataset_catalog()
-            
-            for cat in catalog.keys():
-                datasets_in_cat = []
-                for dataset_name, dataset_info in catalog[cat].items():
-                    if isinstance(dataset_info, dict) and 'id' in dataset_info:
-                        dataset_id = dataset_info['id']
-                    else:
-                        dataset_id = dataset_info
-                    
-                    if int(dataset_id) in dataset_ids:
-                        datasets_in_cat.append((dataset_name, int(dataset_id)))
+                print("Error: Either --dataset-id or both --data-path and --target must be provided")
+                return 1
                 
-                if datasets_in_cat:
-                    datasets_by_category[cat] = datasets_in_cat
+        elif args.command == "train":
+            return train_model(args.dataset_id, args.model_type, args.zero_shot)
             
-            # Print datasets by category
-            for cat, datasets in datasets_by_category.items():
-                print(f"\n{cat.upper()} DATASETS:")
-                print(f"{'Dataset Name':<30} {'ID':<10}")
-                print("-" * 40)
-                for name, id in datasets:
-                    print(f"{name:<30} {id:<10}")
+        elif args.command == "demo":
+            return run_demo(args.model_type, args.zero_shot)
             
-            print(f"\nTotal datasets: {len(dataset_ids)}")
-        else:
-            # Show recommended datasets
-            print("Recommended datasets for training:")
-            datasets = get_recommended_datasets(n_datasets=args.count)
-            
-            if not datasets:
-                print("No recommended datasets found.")
+        elif args.command == "datasets":
+            try:
+                from zerotune.core.data_loading import load_dataset_catalog, get_dataset_ids
+                print("Listing available datasets...")
+                catalog = load_dataset_catalog()
+                dataset_ids = get_dataset_ids(category=args.category)
+                if dataset_ids:
+                    print(f"\nFound {len(dataset_ids)} datasets:")
+                    for dataset_id in dataset_ids:
+                        print(f"- Dataset ID: {dataset_id}")
+                else:
+                    print("No datasets found.")
                 return 0
+            except Exception as e:
+                print(f"Error listing datasets: {str(e)}")
+                return 1
+                
+        else:
+            print(f"Unknown command: {args.command}")
+            return 1
             
-            # Fetch and display dataset information
-            print(f"{'Dataset ID':<10} {'Dataset Name':<30} {'Samples':<10} {'Features':<10}")
-            print("-" * 60)
-            
-            for dataset_id in datasets:
-                try:
-                    import openml
-                    dataset = openml.datasets.get_dataset(dataset_id)
-                    print(f"{dataset_id:<10} {dataset.name:<30} {dataset.qualities['NumberOfInstances']:<10} {dataset.qualities['NumberOfFeatures']:<10}")
-                except Exception as e:
-                    print(f"{dataset_id:<10} Error retrieving dataset info: {str(e)}")
-            
-            # Provide instructions for next steps
-            print("\nTo build a knowledge base with these datasets:")
-            dataset_ids_str = " ".join(map(str, datasets))
-            print(f"zerotune train --datasets {dataset_ids_str} --model {CONFIG['defaults']['model_type']}")
+    except SystemExit as e:
+        return e.code
+    except Exception as e:
+        print(f"Error: {str(e)}")
+        return 1
+
+def predict_openml(dataset_id: int, model_type: str, zero_shot: bool) -> int:
+    """Predict hyperparameters for an OpenML dataset."""
+    try:
+        print(f"Fetching OpenML dataset {dataset_id}...")
+        df, target_name, dataset_name = fetch_open_ml_data(dataset_id)
+        X, y = prepare_data(df, target_name)
+        print(f"Dataset: {dataset_name}")
+        
+        # Initialize ZeroTune
+        print(f"Initializing ZeroTune with model type: {model_type}")
+        zt = ZeroTune(model_type=model_type)
+        
+        # Optimize hyperparameters
+        if zero_shot:
+            print("Predicting hyperparameters using zero-shot mode...")
+        else:
+            print("Optimizing hyperparameters using iterative mode...")
+        best_params, best_score, model = zt.optimize(
+            X, y,
+            n_iter=10 if not zero_shot else 0,
+            verbose=True,
+            optimize=not zero_shot
+        )
+        
+        # Display results
+        print("\n=== Best Hyperparameters ===")
+        for param, value in best_params.items():
+            print(f"{param}: {value}")
+        print(f"\nScore: {best_score}")
         
         return 0
+    except Exception as e:
+        print(f"Error predicting hyperparameters: {str(e)}")
+        return 1
+
+def predict_custom(data_path: str, target: str, model_type: str, zero_shot: bool) -> int:
+    """Predict hyperparameters for a custom dataset."""
+    try:
+        print(f"Loading dataset from {data_path}...")
+        df = pd.read_csv(data_path)
+        if target not in df.columns:
+            print(f"Error: Target column '{target}' not found in dataset")
+            return 1
         
-    else:
-        # No command specified, show help
-        parser.print_help()
+        X = df.drop(target, axis=1)
+        y = df[target]
+        dataset_name = os.path.basename(data_path)
+        print(f"Dataset: {dataset_name}")
+        
+        # Initialize ZeroTune
+        print(f"Initializing ZeroTune with model type: {model_type}")
+        zt = ZeroTune(model_type=model_type)
+        
+        # Optimize hyperparameters
+        if zero_shot:
+            print("Predicting hyperparameters using zero-shot mode...")
+        else:
+            print("Optimizing hyperparameters using iterative mode...")
+        best_params, best_score, model = zt.optimize(
+            X, y,
+            n_iter=10 if not zero_shot else 0,
+            verbose=True,
+            optimize=not zero_shot
+        )
+        
+        # Display results
+        print("\n=== Best Hyperparameters ===")
+        for param, value in best_params.items():
+            print(f"{param}: {value}")
+        print(f"\nScore: {best_score}")
+        
+        return 0
+    except Exception as e:
+        print(f"Error predicting hyperparameters: {str(e)}")
+        return 1
+
+def train_model(dataset_id: int, model_type: str, zero_shot: bool) -> int:
+    """Train a model with optimized hyperparameters."""
+    try:
+        print(f"Fetching OpenML dataset {dataset_id}...")
+        df, target_name, dataset_name = fetch_open_ml_data(dataset_id)
+        X, y = prepare_data(df, target_name)
+        print(f"Dataset: {dataset_name}")
+        
+        # Initialize ZeroTune
+        print(f"Initializing ZeroTune with model type: {model_type}")
+        zt = ZeroTune(model_type=model_type)
+        
+        # Optimize hyperparameters
+        if zero_shot:
+            print("Predicting hyperparameters using zero-shot mode...")
+        else:
+            print("Optimizing hyperparameters using iterative mode...")
+        best_params, best_score, model = zt.optimize(
+            X, y,
+            n_iter=10 if not zero_shot else 0,
+            verbose=True,
+            optimize=not zero_shot
+        )
+        
+        # Train final model
+        print("\nTraining final model with best hyperparameters...")
+        model.fit(X, y)
+        
+        # Evaluate model
+        y_pred = model.predict(X)
+        accuracy = (y_pred == y).mean()
+        print(f"\nTraining accuracy: {accuracy:.4f}")
+        
+        return 0
+    except Exception as e:
+        print(f"Error training model: {str(e)}")
+        return 1
+
+def run_demo(model_type: str, zero_shot: bool) -> int:
+    """Run a demo optimization."""
+    try:
+        # Use a small, well-known dataset for the demo
+        dataset_id = 31  # credit-g dataset
+        print(f"Running demo with model type: {model_type}")
+        print(f"Using dataset ID: {dataset_id}")
+        
+        return predict_openml(dataset_id, model_type, zero_shot)
+    except Exception as e:
+        print(f"Error running demo: {str(e)}")
         return 1
 
 if __name__ == "__main__":

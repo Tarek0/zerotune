@@ -70,20 +70,20 @@ def _calculate_correlation_metrics(
         
     Returns:
         Dictionary containing correlation metrics:
-            - mean_correlation: Mean absolute correlation between features and target
-            - high_correlation_count: Number of features with correlation above the cutoff
-            - high_correlation_ratio: Ratio of highly correlated features to total features
+            - n_highly_target_corr: Number of features with correlation above the cutoff (integer)
+            - avg_target_corr: Mean absolute correlation between features and target (float)
+            - var_target_corr: Variance of correlations between features and target (float)
     """
     df = pd.DataFrame(X.copy())
     df['target'] = pd.Series(y.copy())
     correlation_matrix = df.corr(method='pearson')
     correlations_with_target = abs(correlation_matrix['target'])
     
-    informative_features = correlations_with_target[correlations_with_target > correlation_cutoff].sort_values(ascending=False)
-    n_informative = len(informative_features) - 1
+    # Count features with correlation above cutoff (excluding target itself)
+    n_informative = int(sum(correlations_with_target > correlation_cutoff)) - 1
     
     return {
-        'n_highly_target_corr': float(n_informative),
+        'n_highly_target_corr': n_informative,  # Return as integer
         'avg_target_corr': float(correlations_with_target.mean()),
         'var_target_corr': float(correlations_with_target.var())
     }
@@ -110,40 +110,93 @@ def _calculate_feature_moments_and_variances(X: pd.DataFrame) -> Dict[str, float
     Note:
         Only numeric columns (int64, float64) are used for calculations.
         Non-numeric columns are ignored.
+        NaN values are handled by replacing them with column means.
     """
-    # Only use numeric columns for statistics
-    X_numeric = X.select_dtypes(include=['int64', 'float64'])
-    
-    # Calculate moments for numeric features
-    moment_1 = X_numeric.apply(lambda x: x.mean(), axis=0)
-    moment_2 = X_numeric.apply(lambda x: (x ** 2).mean(), axis=0)
-    moment_3 = X_numeric.apply(lambda x: (x ** 3).mean(), axis=0)
-    moment_4 = X_numeric.apply(lambda x: (x ** 4).mean(), axis=0)
-    
-    # Calculate row-wise statistics
-    row_moment_1 = X_numeric.apply(lambda x: x.mean(), axis=1)
-    row_moment_2 = X_numeric.apply(lambda x: (x ** 2).mean(), axis=1)
-    row_moment_3 = X_numeric.apply(lambda x: (x ** 3).mean(), axis=1)
-    row_moment_4 = X_numeric.apply(lambda x: (x ** 4).mean(), axis=1)
-    
-    return {
-        'avg_feature_m1': float(moment_1.mean()),
-        'var_feature_m1': float(moment_1.var()),
-        'avg_feature_m2': float(moment_2.mean()),
-        'var_feature_m2': float(moment_2.var()),
-        'avg_feature_m3': float(moment_3.mean()),
-        'var_feature_m3': float(moment_3.var()),
-        'avg_feature_m4': float(moment_4.mean()),
-        'var_feature_m4': float(moment_4.var()),
-        'avg_row_m1': float(row_moment_1.mean()),
-        'var_row_m1': float(row_moment_1.var()),
-        'avg_row_m2': float(row_moment_2.mean()),
-        'var_row_m2': float(row_moment_2.var()),
-        'avg_row_m3': float(row_moment_3.mean()),
-        'var_row_m3': float(row_moment_3.var()),
-        'avg_row_m4': float(row_moment_4.mean()),
-        'var_row_m4': float(row_moment_4.var())
-    }
+    try:
+        # Only use numeric columns for statistics (include all numeric types)
+        X_numeric = X.select_dtypes(include=[np.number])
+        
+        # Handle NaN values by replacing with column means
+        for col in X_numeric.columns:
+            if X_numeric[col].isna().any():
+                mean_val = X_numeric[col].mean()
+                if pd.isna(mean_val):  # If mean is NaN (all values are NaN)
+                    X_numeric[col] = X_numeric[col].fillna(0)
+                else:
+                    X_numeric[col] = X_numeric[col].fillna(mean_val)
+        
+        # Check if we have valid data after handling NaNs
+        if X_numeric.empty or X_numeric.shape[1] == 0:
+            # Return NaN for all metrics if no valid data
+            return {
+                'avg_feature_m1': float('nan'), 'var_feature_m1': float('nan'),
+                'avg_feature_m2': float('nan'), 'var_feature_m2': float('nan'),
+                'avg_feature_m3': float('nan'), 'var_feature_m3': float('nan'),
+                'avg_feature_m4': float('nan'), 'var_feature_m4': float('nan'),
+                'avg_row_m1': float('nan'), 'var_row_m1': float('nan'),
+                'avg_row_m2': float('nan'), 'var_row_m2': float('nan'),
+                'avg_row_m3': float('nan'), 'var_row_m3': float('nan'),
+                'avg_row_m4': float('nan'), 'var_row_m4': float('nan')
+            }
+        
+        # Calculate moments for numeric features with error handling
+        try:
+            moment_1 = X_numeric.apply(lambda x: x.mean(), axis=0)
+            moment_2 = X_numeric.apply(lambda x: (x ** 2).mean(), axis=0)
+            moment_3 = X_numeric.apply(lambda x: (x ** 3).mean(), axis=0)
+            moment_4 = X_numeric.apply(lambda x: (x ** 4).mean(), axis=0)
+            
+            # Calculate row-wise statistics
+            row_moment_1 = X_numeric.apply(lambda x: x.mean(), axis=1)
+            row_moment_2 = X_numeric.apply(lambda x: (x ** 2).mean(), axis=1)
+            row_moment_3 = X_numeric.apply(lambda x: (x ** 3).mean(), axis=1)
+            row_moment_4 = X_numeric.apply(lambda x: (x ** 4).mean(), axis=1)
+            
+            return {
+                'avg_feature_m1': float(moment_1.mean()),
+                'var_feature_m1': float(moment_1.var()),
+                'avg_feature_m2': float(moment_2.mean()),
+                'var_feature_m2': float(moment_2.var()),
+                'avg_feature_m3': float(moment_3.mean()),
+                'var_feature_m3': float(moment_3.var()),
+                'avg_feature_m4': float(moment_4.mean()),
+                'var_feature_m4': float(moment_4.var()),
+                'avg_row_m1': float(row_moment_1.mean()),
+                'var_row_m1': float(row_moment_1.var()),
+                'avg_row_m2': float(row_moment_2.mean()),
+                'var_row_m2': float(row_moment_2.var()),
+                'avg_row_m3': float(row_moment_3.mean()),
+                'var_row_m3': float(row_moment_3.var()),
+                'avg_row_m4': float(row_moment_4.mean()),
+                'var_row_m4': float(row_moment_4.var())
+            }
+        except Exception as e:
+            print(f"Error calculating feature moments: {str(e)}")
+            # Return NaN for values that couldn't be calculated
+            return {
+                'avg_feature_m1': float('nan'), 'var_feature_m1': float('nan'),
+                'avg_feature_m2': float('nan'), 'var_feature_m2': float('nan'),
+                'avg_feature_m3': float('nan'), 'var_feature_m3': float('nan'),
+                'avg_feature_m4': float('nan'), 'var_feature_m4': float('nan'),
+                'avg_row_m1': float('nan'), 'var_row_m1': float('nan'),
+                'avg_row_m2': float('nan'), 'var_row_m2': float('nan'),
+                'avg_row_m3': float('nan'), 'var_row_m3': float('nan'),
+                'avg_row_m4': float('nan'), 'var_row_m4': float('nan')
+            }
+            
+    except Exception as e:
+        print(f"Error in _calculate_feature_moments_and_variances: {str(e)}")
+        # Return NaN for all metrics if an error occurred
+        return {
+            'avg_feature_m1': float('nan'), 'var_feature_m1': float('nan'),
+            'avg_feature_m2': float('nan'), 'var_feature_m2': float('nan'),
+            'avg_feature_m3': float('nan'), 'var_feature_m3': float('nan'),
+            'avg_feature_m4': float('nan'), 'var_feature_m4': float('nan'),
+            'avg_row_m1': float('nan'), 'var_row_m1': float('nan'),
+            'avg_row_m2': float('nan'), 'var_row_m2': float('nan'),
+            'avg_row_m3': float('nan'), 'var_row_m3': float('nan'),
+            'avg_row_m4': float('nan'), 'var_row_m4': float('nan')
+        }
 
 
 def _calculate_row_moments_and_variances(X: pd.DataFrame) -> Dict[str, float]:
