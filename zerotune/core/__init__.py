@@ -9,6 +9,7 @@ The ZeroTune class is the main entry point for using the system.
 
 from zerotune.core.zero_tune import ZeroTune
 from zerotune.core.model_configs import ModelConfigs
+from zerotune.core.predictor_training import train_predictor_from_knowledge_base
 from zerotune.core.data_loading import (
     fetch_open_ml_data,
     prepare_data,
@@ -31,6 +32,7 @@ from zerotune.core.utils import (
 __all__ = [
     'ZeroTune',
     'ModelConfigs',
+    'train_predictor_from_knowledge_base',
     'CONFIG',
     'fetch_open_ml_data',
     'prepare_data',

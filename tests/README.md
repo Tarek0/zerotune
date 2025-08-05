@@ -10,7 +10,9 @@ This directory contains the test suite for the ZeroTune package. The test files 
 - **test_feature_extraction.py**: Tests for the feature extraction module, covering dataset meta-parameter calculation.
 - **test_knowledge_base.py**: Tests for the knowledge base module, covering saving, loading, and finding similar datasets.
 - **test_model_configs.py**: Tests for the model configuration module, including parameter settings for different algorithms.
-- **test_optimization.py**: Tests for the optimization module, covering hyperparameter optimization with Optuna.
+- **test_optimization.py**: Tests for the optimization module, covering multi-seed hyperparameter optimization with Optuna.
+- **test_predictor_training.py**: Tests for the advanced predictor training module, including RFECV feature selection, NMAE/Top-K evaluation metrics, and multi-seed training data processing.
+- **test_predictors.py**: Tests for the `ZeroTunePredictor` class, covering zero-shot hyperparameter prediction and model loading.
 
 ## Running Tests
 

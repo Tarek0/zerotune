@@ -1,8 +1,8 @@
 """
-Main ZeroTune interface for hyperparameter optimization.
+ZeroTune Knowledge Base Builder for training zero-shot predictors.
 
-This module provides the main interface for ZeroTune, integrating data loading,
-feature extraction, model configuration, knowledge base management, and optimization.
+This module provides functionality to build knowledge bases from multiple datasets
+that can then be used to train zero-shot hyperparameter predictors.
 """
 
 import os
@@ -27,8 +27,6 @@ from zerotune.core.knowledge_base import (
     update_knowledge_base
 )
 from zerotune.core.optimization import (
-    find_similar_datasets,
-    retrieve_best_configurations,
     optimize_hyperparameters,
     train_final_model,
     calculate_performance_score
@@ -40,16 +38,22 @@ from zerotune.core.utils import convert_to_dataframe
 
 class ZeroTune:
     """
-    Main class for ZeroTune hyperparameter optimization.
+    Knowledge base builder for training zero-shot hyperparameter predictors.
     
-    This class provides the primary interface for meta-learning based
-    hyperparameter optimization. It leverages knowledge from previous
-    optimization runs on similar datasets to accelerate hyperparameter tuning.
+    This class builds comprehensive knowledge bases by running hyperparameter optimization
+    on multiple datasets and storing:
+    - Dataset meta-features (characteristics like n_samples, n_features, imbalance_ratio, etc.)
+    - Optimal hyperparameters found for each dataset
+    - Performance scores achieved
+    
+    The resulting knowledge base provides training data for zero-shot predictors.
+    
+    For zero-shot predictions, use ZeroTunePredictor instead of this class.
     """
     
     def __init__(self, model_type: str = None, kb_path: Optional[str] = None) -> None:
         """
-        Initialize ZeroTune with a specified model type.
+        Initialize ZeroTune knowledge base builder.
         
         Args:
             model_type: Type of model to optimize. 
@@ -100,7 +104,7 @@ class ZeroTune:
             else:
                 raise ValueError(f"Unsupported model type: {self.model_type}")
         except ImportError as e:
-            raise ImportError(f"Failed to import model class for {self.model_type}: {str(e)}")
+            raise ImportError(f"Required package for {self.model_type} not installed: {e}")
     
     def _get_model_config(self) -> Dict[str, Any]:
         """
@@ -125,216 +129,89 @@ class ZeroTune:
         self,
         param_config: Dict[str, Dict[str, Any]],
         X_shape: Tuple[int, int]
-    ) -> Dict[str, List[Union[int, float]]]:
+    ) -> Dict[str, Tuple[float, float, str]]:
         """
-        Convert parameter configuration format to the format expected by optimize_hyperparameters.
+        Convert parameter configuration to parameter grid for Optuna optimization.
         
         Args:
             param_config: Parameter configuration from model config
-            X_shape: Shape of the feature matrix to calculate dependent values
+            X_shape: Shape of the input data (n_samples, n_features)
             
         Returns:
-            Parameter grid in format expected by optimize_hyperparameters
+            Parameter grid suitable for Optuna optimization (param_name -> (low, high, scale))
         """
+        param_grid = {}
         n_samples, n_features = X_shape
-        param_grid: Dict[str, List[Union[int, float]]] = {}
         
-        for param, config in param_config.items():
-            if 'percentage_splits' in config:
-                splits = config['percentage_splits']
-                param_type = config.get('param_type', 'float')
-                dependency = config.get('dependency', None)
-                multiplier = config.get('multiplier', 1)
+        for param_name, param_info in param_config.items():
+            # Handle direct list parameters (e.g., n_estimators: [50, 100, 200, 500, 1000])
+            if isinstance(param_info, list):
+                param_grid[param_name] = param_info
+                continue
                 
-                if dependency == 'n_samples':
-                    base_value = n_samples
-                elif dependency == 'n_features':
-                    base_value = n_features
-                else:
-                    base_value = 1
+            param_type = param_info.get('param_type', 'float')
+            
+            if 'percentage_splits' in param_info:
+                # Use percentage splits to define ranges
+                splits = param_info['percentage_splits']
+                min_val = min(splits)
+                max_val = max(splits)
                 
-                if param_type == 'int':
-                    values = [int(split * base_value * multiplier) for split in splits]
-                    values = [max(1, val) for val in values]  # Ensure no zeros
-                    param_grid[param] = values
+                if param_info.get('dependency') == 'n_samples':
+                    # Parameters that depend on dataset size
+                    if param_name == 'max_depth':
+                        max_depth = max(1, int(np.log2(n_samples)))
+                        param_grid[param_name] = (1, max_depth, "int")
+                    else:
+                        # Scale by n_samples
+                        base_val = n_samples
+                        multiplier = param_info.get('multiplier', 1)
+                        param_grid[param_name] = (
+                            int(min_val * base_val * multiplier), 
+                            int(max_val * base_val * multiplier), 
+                            "int"
+                        )
+                elif param_info.get('dependency') == 'n_features':
+                    # Parameters that depend on number of features
+                    base_val = n_features
+                    multiplier = param_info.get('multiplier', 1)
+                    if param_type == 'int':
+                        calculated_min = max(1, int(min_val * base_val * multiplier))
+                        calculated_max = int(max_val * base_val * multiplier)
+                        
+                        # Apply min/max constraints if specified
+                        if 'min_value' in param_info:
+                            calculated_min = max(calculated_min, param_info['min_value'])
+                        if 'max_value' in param_info:
+                            calculated_max = min(calculated_max, param_info['max_value'])
+                        
+                        param_grid[param_name] = (calculated_min, calculated_max, "int")
+                    else:
+                        calculated_min = min_val * base_val * multiplier
+                        calculated_max = max_val * base_val * multiplier
+                        
+                        # Apply min/max constraints if specified
+                        if 'min_value' in param_info:
+                            calculated_min = max(calculated_min, param_info['min_value'])
+                        if 'max_value' in param_info:
+                            calculated_max = min(calculated_max, param_info['max_value'])
+                        
+                        param_grid[param_name] = (calculated_min, calculated_max, "linear")
                 else:
-                    param_grid[param] = splits
+                    # Direct percentage values (e.g., learning_rate, subsample, colsample_bytree)
+                    if param_type == 'float':
+                        param_grid[param_name] = (min_val, max_val, "linear")
+                    else:
+                        param_grid[param_name] = (int(min_val), int(max_val), "int")
             else:
-                # Default to original value if format not recognized
-                param_grid[param] = config
+                # Fallback for old-style configurations
+                param_range = param_info.get('range', [0.01, 1.0])
+                if param_type == 'int':
+                    param_grid[param_name] = (param_range[0], param_range[1], "int")
+                else:
+                    param_grid[param_name] = (param_range[0], param_range[1], "linear")
         
         return param_grid
-    
-    def optimize(
-        self,
-        X: Union[np.ndarray, pd.DataFrame],
-        y: Union[np.ndarray, pd.Series],
-        n_iter: Optional[int] = None,
-        test_size: Optional[float] = None,
-        random_state: Optional[int] = None,
-        verbose: bool = True,
-        optimize: bool = True
-    ) -> Tuple[Dict[str, Any], float, BaseEstimator]:
-        """
-        Optimize hyperparameters for a given dataset using meta-learning.
-        
-        This is the main method for using ZeroTune. It performs the following steps:
-        1. Calculates meta-features for the provided dataset
-        2. Finds similar datasets in the knowledge base
-        3. Retrieves best hyperparameter configurations from similar datasets
-        4. If optimize=True, performs hyperparameter optimization using the retrieved configurations as guidance
-        5. If optimize=False, uses the best retrieved configuration directly (zero-shot, no search)
-        6. Trains a final model with the best hyperparameters
-        7. Updates the knowledge base with the new optimization results
-        
-        Args:
-            X: Feature matrix for the dataset to optimize
-            y: Target values for the dataset
-            n_iter: Number of iterations for hyperparameter optimization (default from config)
-            test_size: Proportion of the dataset to use for testing when splitting (default from config)
-            random_state: Random seed for reproducibility (default from config)
-            verbose: Whether to print progress information during optimization
-            optimize: If False, only use the best config from similar datasets (zero-shot, no search). If True, run iterative HPO (default).
-        Returns:
-            A tuple containing:
-                - best_params: The best hyperparameters found
-                - best_score: The performance score achieved with the best hyperparameters
-                - trained_model: A trained model instance using the best hyperparameters
-        Note:
-            This method updates the knowledge base with the results of the optimization.
-        """
-        # Use defaults from config if parameters not provided
-        n_iter = n_iter if n_iter is not None else CONFIG["defaults"]["n_iter"]
-        test_size = test_size if test_size is not None else CONFIG["defaults"]["test_size"]
-        random_state = random_state if random_state is not None else CONFIG["defaults"]["random_state"]
-        
-        # Convert to dataframe if needed for meta-feature extraction
-        X_df = convert_to_dataframe(X)
-        
-        # Calculate meta-features for the dataset
-        meta_features = calculate_dataset_meta_parameters(X_df, y)
-        
-        if verbose:
-            print(f"Calculated meta-features: {meta_features}")
-        
-        # Split data for training and validation
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=test_size, random_state=random_state
-        )
-        
-        # Find similar datasets
-        similar_datasets = find_similar_datasets(
-            meta_features, 
-            self.knowledge_base,
-            n_neighbors=CONFIG["defaults"]["n_neighbors"]
-        )
-        
-        if verbose:
-            print(f"Found similar datasets: {similar_datasets}")
-        
-        # Retrieve best configurations from similar datasets
-        warm_start_configs = retrieve_best_configurations(
-            similar_datasets,
-            self.knowledge_base,
-            model_type=self.model_type
-        )
-        
-        if verbose:
-            print(f"Retrieved {len(warm_start_configs)} configurations from similar datasets")
-        
-        # Convert parameter config to grid
-        param_grid = self._convert_param_config_to_grid(
-            self.model_config['param_config'],
-            X_train.shape
-        )
-        
-        if verbose:
-            print(f"Parameter grid: {param_grid}")
-        
-        if not optimize:
-            # Zero-shot: Use the best retrieved config only
-            if not warm_start_configs:
-                raise RuntimeError("No similar datasets found in the knowledge base for zero-shot prediction.")
-            best_params = warm_start_configs[0]
-            # Convert relative params if needed
-            from zerotune.core.optimization import _convert_relative_to_absolute_params
-            best_params = _convert_relative_to_absolute_params(best_params, param_grid, meta_features)
-            # Train and evaluate model
-            final_model = train_final_model(
-                self.model_class,
-                best_params,
-                X_train, y_train
-            )
-            best_score = calculate_performance_score(
-                final_model,
-                X_test, y_test,
-                metric=self.model_config['metric']
-            )
-            if verbose:
-                print(f"Zero-shot best parameters: {best_params}")
-                print(f"Zero-shot test score: {best_score}")
-            # Optionally update knowledge base
-            dataset_name = f"user_dataset_{len(self.knowledge_base.get('datasets', []))}"
-            update_knowledge_base(
-                self.knowledge_base,
-                dataset_name=dataset_name,
-                meta_features=meta_features,
-                best_hyperparameters=best_params,
-                best_score=best_score,
-                all_results=[{"hyperparameters": best_params, "score": best_score, "state": "ZERO_SHOT"}],
-                model_type=self.model_type
-            )
-            save_knowledge_base(self.knowledge_base, self.kb_path, self.model_type)
-            return best_params, best_score, final_model
-        
-        # Iterative HPO (default)
-        best_params, best_score, all_results = optimize_hyperparameters(
-            self.model_class,
-            param_grid,
-            X_train, y_train,
-            metric=self.model_config['metric'],
-            n_iter=n_iter,
-            test_size=test_size,
-            random_state=random_state,
-            verbose=verbose,
-            warm_start_configs=warm_start_configs,
-            dataset_meta_params=meta_features
-        )
-        
-        if verbose:
-            print(f"Best parameters: {best_params}")
-            print(f"Best score: {best_score}")
-        
-        # Train final model
-        final_model = train_final_model(
-            self.model_class,
-            best_params,
-            X_train, y_train
-        )
-        
-        # Evaluate on test set
-        test_score = calculate_performance_score(
-            final_model,
-            X_test, y_test,
-            metric=self.model_config['metric']
-        )
-        
-        if verbose:
-            print(f"Test score: {test_score}")
-        
-        # Update knowledge base
-        dataset_name = f"user_dataset_{len(self.knowledge_base.get('datasets', []))}"
-        update_knowledge_base(
-            self.knowledge_base,
-            dataset_name=dataset_name,
-            meta_features=meta_features,
-            best_hyperparameters=best_params,
-            best_score=best_score,
-            all_results=all_results,
-            model_type=self.model_type
-        )
-        save_knowledge_base(self.knowledge_base, self.kb_path, self.model_type)
-        return best_params, best_score, final_model
     
     def build_knowledge_base(
         self,
@@ -348,7 +225,7 @@ class ZeroTune:
         Build a knowledge base by running optimization on multiple datasets.
         
         This method fetches multiple datasets from OpenML and runs optimization on each
-        to build a comprehensive knowledge base that can be used for future optimizations.
+        to build a comprehensive knowledge base that can be used to train zero-shot predictors.
         
         Args:
             dataset_ids: List of OpenML dataset IDs to use. If not provided,
@@ -367,7 +244,7 @@ class ZeroTune:
         
         # Get list of dataset IDs if not provided
         if dataset_ids is None:
-            dataset_ids = get_recommended_datasets('classification', n_datasets)
+            dataset_ids = get_recommended_datasets(n_datasets=n_datasets)
             
         if verbose:
             print(f"Building knowledge base using {len(dataset_ids)} datasets...")
@@ -390,12 +267,9 @@ class ZeroTune:
                 if verbose:
                     print(f"Data shape: {X.shape}, Target shape: {y.shape}")
                 
-                # Run optimization
-                best_params, best_score, model = self.optimize(
-                    X, y,
-                    n_iter=n_iter,
-                    random_state=random_state,
-                    verbose=verbose
+                # Run optimization to find best hyperparameters for this dataset
+                best_params, best_score = self._optimize_single_dataset(
+                    X, y, n_iter, random_state, verbose
                 )
                 
                 if verbose:
@@ -411,6 +285,100 @@ class ZeroTune:
             print("\nKnowledge base building completed.")
         
         return self.knowledge_base
+    
+    def _optimize_single_dataset(
+        self, 
+        X: Union[np.ndarray, pd.DataFrame], 
+        y: Union[np.ndarray, pd.Series],
+        n_iter: int,
+        random_state: int,
+        verbose: bool
+    ) -> Tuple[Dict[str, Any], float]:
+        """
+        Run hyperparameter optimization on a single dataset and update knowledge base.
+        
+        Args:
+            X: Feature matrix
+            y: Target values
+            n_iter: Number of optimization iterations
+            random_state: Random seed
+            verbose: Whether to print progress
+            
+        Returns:
+            Tuple of (best_params, best_score)
+        """
+        # Convert to dataframe if needed for meta-feature extraction
+        X_df = convert_to_dataframe(X)
+        
+        # Calculate meta-features for the dataset
+        meta_features = calculate_dataset_meta_parameters(X_df, y)
+        
+        if verbose:
+            print(f"Calculated meta-features: {meta_features}")
+        
+        # Split data for training and validation
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=0.2, random_state=random_state
+        )
+        
+        # Convert parameter config to grid
+        param_grid = self._convert_param_config_to_grid(
+            self.model_config['param_config'],
+            X_train.shape
+        )
+        
+        # Run hyperparameter optimization (no warm start - pure data collection)
+        if verbose:
+            print("Running hyperparameter optimization for knowledge base data collection")
+        
+        best_params, best_score, _, df_trials = optimize_hyperparameters(
+            self.model_class,
+            param_grid,
+            X_train,
+            y_train,
+            metric=self.model_config["metric"],
+            n_iter=n_iter,
+            test_size=0.2,
+            random_state=random_state,
+            verbose=verbose,
+            warm_start_configs=None,  # No warm start for knowledge base building
+            dataset_meta_params=meta_features
+        )
+        
+        # Train final model with best parameters
+        trained_model = train_final_model(
+            self.model_class,
+            best_params,
+            X_train,
+            y_train
+        )
+        
+        # Calculate final score on test set
+        final_score = calculate_performance_score(
+            trained_model,
+            X_test,
+            y_test,
+            metric=self.model_config["metric"]
+        )
+        
+        if verbose:
+            print(f"Final test score: {final_score:.4f}")
+        
+        # Update knowledge base with new results
+        if self.knowledge_base:
+            self.knowledge_base = update_knowledge_base(
+                self.knowledge_base,
+                dataset_name="unknown",  # Could be improved by passing dataset name
+                meta_features=meta_features,
+                best_hyperparameters=best_params,
+                best_score=final_score,
+                model_type=self.model_type,
+                df_trials=df_trials
+            )
+            # Save updated knowledge base
+            save_knowledge_base(self.knowledge_base, self.kb_path)
+        
+        return best_params, final_score
     
     def save_knowledge_base(self):
         """
