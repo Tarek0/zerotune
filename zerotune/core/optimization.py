@@ -270,10 +270,11 @@ def optimize_hyperparameters(
     random_state: Optional[int] = 42,
     verbose: bool = True,
     warm_start_configs: Optional[List[HyperParams]] = None,
-    dataset_meta_params: Optional[Dict[str, Any]] = None
-) -> Tuple[HyperParams, float, List[Dict[str, Any]]]:
+    dataset_meta_params: Optional[Dict[str, Any]] = None,
+    n_seeds: int = 10
+) -> Tuple[HyperParams, float, List[Dict[str, Any]], 'pd.DataFrame']:
     """
-    Optimize hyperparameters using Optuna with warm-starting capabilities.
+    Optimize hyperparameters using Optuna with warm-starting capabilities and multiple seeded runs.
     
     Args:
         model_class: Class of the ML model to use
@@ -281,74 +282,118 @@ def optimize_hyperparameters(
         X_train: Training features
         y_train: Training targets
         metric: Evaluation metric to use
-        n_iter: Number of optimization trials
+        n_iter: Number of optimization trials per seed
         test_size: Validation split ratio
-        random_state: Random state for reproducibility
+        random_state: Base random state for reproducibility
         verbose: Whether to print progress
         warm_start_configs: Optional list of hyperparameter configurations to warm-start from
         dataset_meta_params: Optional dictionary of dataset meta-parameters for relative parameter conversion
+        n_seeds: Number of different random seeds to run (default: 10)
         
     Returns:
         A tuple containing:
-            - best_params: Dictionary of best hyperparameters found
-            - best_score: Best performance score achieved
-            - all_results: List of all configurations and their scores
+            - best_params: Dictionary of best hyperparameters found across all seeds
+            - best_score: Best performance score achieved across all seeds
+            - all_results: List of all configurations and their scores from all seeds
+            - df_trials: DataFrame with all Optuna trials from all seeds including seed information
     """
     # Split data for training and validation
     X_train_split, X_val, y_train_split, y_val = train_test_split(
         X_train, y_train, test_size=test_size, random_state=random_state
     )
     
-    # Create Optuna study
-    study = optuna.create_study(
-        direction="maximize",
-        sampler=optuna.samplers.TPESampler(seed=random_state)
-    )
+    # Initialize containers for aggregating results across all seeds
+    all_studies = []
+    all_results = []
+    all_df_trials = []
     
-    # Add warm-start configurations if provided
-    if warm_start_configs:
+    # Run optimization with multiple seeds
+    if verbose:
+        print(f"Running optimization with {n_seeds} different seeds, {n_iter} trials each")
+        print(f"Total trials: {n_seeds * n_iter}")
+    
+    for seed in range(n_seeds):
+        current_seed = random_state + seed if random_state is not None else seed
+        
         if verbose:
-            print(f"Warm-starting optimization with {len(warm_start_configs)} configurations")
+            print(f"\n--- Seed {seed + 1}/{n_seeds} (seed={current_seed}) ---")
         
-        # Convert warm-start configurations to match parameter grid
-        converted_configs = []
-        for config in warm_start_configs:
-            if dataset_meta_params is not None:
-                converted_config = _convert_relative_to_absolute_params(
-                    config, param_grid, dataset_meta_params
-                )
-            else:
-                converted_config = _convert_relative_to_absolute_params(
-                    config, param_grid, {}
-                )
-            converted_configs.append(converted_config)
-        
-        # Enqueue converted configurations
-        for config in converted_configs:
-            study.enqueue_trial(config)
-    
-    # Define objective function
-    def objective(trial: Trial) -> float:
-        is_warm_start = trial.number < len(warm_start_configs) if warm_start_configs else False
-        return _optuna_objective(
-            trial,
-            model_class,
-            param_grid,
-            X_train_split,
-            X_val,
-            y_train_split,
-            y_val,
-            metric,
-            dataset_meta_params,
-            is_warm_start
+        # Create Optuna study with current seed
+        study = optuna.create_study(
+            direction="maximize",
+            sampler=optuna.samplers.TPESampler(seed=current_seed)
         )
+        
+        # Add warm-start configurations if provided (only for first seed to avoid bias)
+        if warm_start_configs and seed == 0:
+            if verbose:
+                print(f"Warm-starting optimization with {len(warm_start_configs)} configurations")
+            
+            # Convert warm-start configurations to match parameter grid
+            converted_configs = []
+            for config in warm_start_configs:
+                if dataset_meta_params is not None:
+                    converted_config = _convert_relative_to_absolute_params(
+                        config, param_grid, dataset_meta_params
+                    )
+                else:
+                    converted_config = _convert_relative_to_absolute_params(
+                        config, param_grid, {}
+                    )
+                converted_configs.append(converted_config)
+            
+            # Enqueue converted configurations
+            for config in converted_configs:
+                study.enqueue_trial(config)
+        
+        # Create objective function with warm-start flag tracking
+        warm_start_count = len(warm_start_configs) if warm_start_configs and seed == 0 else 0
+        
+        def objective(trial: Trial) -> float:
+            is_warm_start = trial.number < warm_start_count
+            return _optuna_objective(
+                trial,
+                model_class,
+                param_grid,
+                X_train_split,
+                X_val,
+                y_train_split,
+                y_val,
+                metric,
+                dataset_meta_params,
+                is_warm_start
+            )
+        
+        # Run optimization for this seed
+        study.optimize(objective, n_trials=n_iter, show_progress_bar=verbose)
+        
+        # Store this study
+        all_studies.append(study)
+        
+        # Collect results from this seed
+        for trial in study.trials:
+            if trial.state == optuna.trial.TrialState.COMPLETE:
+                result = {
+                    "hyperparameters": trial.params,
+                    "score": trial.value,
+                    "state": trial.state.name,
+                    "seed": current_seed,
+                    "is_warm_start": trial.number < warm_start_count
+                }
+                all_results.append(result)
+        
+        # Get trials dataframe with seed information
+        df_trials_seed = study.trials_dataframe()
+        df_trials_seed['seed'] = current_seed
+        all_df_trials.append(df_trials_seed)
+        
+        if verbose:
+            print(f"Seed {seed + 1} best score: {study.best_value:.4f}")
     
-    # Run optimization
-    study.optimize(objective, n_trials=n_iter, show_progress_bar=verbose)
-    
-    # Get best results
-    best_params = study.best_params
-    best_score = study.best_value
+    # Find overall best results across all seeds
+    best_study = max(all_studies, key=lambda s: s.best_value)
+    best_params = best_study.best_params
+    best_score = best_study.best_value
     
     # Convert relative parameters to absolute if needed
     if dataset_meta_params is not None:
@@ -356,25 +401,24 @@ def optimize_hyperparameters(
             best_params, param_grid, dataset_meta_params
         )
     
-    # Collect all results
-    all_results = []
-    for trial in study.trials:
-        if trial.state == optuna.trial.TrialState.COMPLETE:
-            result = {
-                "hyperparameters": trial.params,
-                "score": trial.value,
-                "state": trial.state.name,
-                "is_warm_start": trial.number < len(warm_start_configs) if warm_start_configs else False
-            }
-            all_results.append(result)
+    # Combine all trials dataframes
+    import pandas as pd
+    df_trials = pd.concat(all_df_trials, ignore_index=True)
     
     if verbose:
-        print(f"\nBest score: {best_score:.4f}")
-        print("Best hyperparameters:")
+        print(f"\n=== MULTI-SEED OPTIMIZATION SUMMARY ===")
+        print(f"Total trials across {n_seeds} seeds: {len(all_results)}")
+        print(f"Overall best score: {best_score:.4f}")
+        print("Overall best hyperparameters:")
         for param, value in best_params.items():
             print(f"  {param}: {value}")
+        
+        # Show performance across seeds
+        seed_scores = [study.best_value for study in all_studies]
+        print(f"Best scores per seed: {[f'{score:.4f}' for score in seed_scores]}")
+        print(f"Mean ± Std: {np.mean(seed_scores):.4f} ± {np.std(seed_scores):.4f}")
     
-        return best_params, best_score, all_results
+    return best_params, best_score, all_results, df_trials
 
 
 def find_similar_datasets(

@@ -144,6 +144,11 @@ class ZeroTune:
         n_samples, n_features = X_shape
         
         for param_name, param_info in param_config.items():
+            # Handle direct list parameters (e.g., n_estimators: [50, 100, 200, 500, 1000])
+            if isinstance(param_info, list):
+                param_grid[param_name] = param_info
+                continue
+                
             param_type = param_info.get('param_type', 'float')
             
             if 'percentage_splits' in param_info:
@@ -171,17 +176,27 @@ class ZeroTune:
                     base_val = n_features
                     multiplier = param_info.get('multiplier', 1)
                     if param_type == 'int':
-                        param_grid[param_name] = (
-                            max(1, int(min_val * base_val * multiplier)), 
-                            int(max_val * base_val * multiplier), 
-                            "int"
-                        )
+                        calculated_min = max(1, int(min_val * base_val * multiplier))
+                        calculated_max = int(max_val * base_val * multiplier)
+                        
+                        # Apply min/max constraints if specified
+                        if 'min_value' in param_info:
+                            calculated_min = max(calculated_min, param_info['min_value'])
+                        if 'max_value' in param_info:
+                            calculated_max = min(calculated_max, param_info['max_value'])
+                        
+                        param_grid[param_name] = (calculated_min, calculated_max, "int")
                     else:
-                        param_grid[param_name] = (
-                            min_val * base_val * multiplier, 
-                            max_val * base_val * multiplier, 
-                            "linear"
-                        )
+                        calculated_min = min_val * base_val * multiplier
+                        calculated_max = max_val * base_val * multiplier
+                        
+                        # Apply min/max constraints if specified
+                        if 'min_value' in param_info:
+                            calculated_min = max(calculated_min, param_info['min_value'])
+                        if 'max_value' in param_info:
+                            calculated_max = min(calculated_max, param_info['max_value'])
+                        
+                        param_grid[param_name] = (calculated_min, calculated_max, "linear")
                 else:
                     # Direct percentage values (e.g., learning_rate, subsample, colsample_bytree)
                     if param_type == 'float':
@@ -316,7 +331,7 @@ class ZeroTune:
         if verbose:
             print("Running hyperparameter optimization for knowledge base data collection")
         
-        best_params, best_score, _ = optimize_hyperparameters(
+        best_params, best_score, _, df_trials = optimize_hyperparameters(
             self.model_class,
             param_grid,
             X_train,
@@ -357,7 +372,8 @@ class ZeroTune:
                 meta_features=meta_features,
                 best_hyperparameters=best_params,
                 best_score=final_score,
-                model_type=self.model_type
+                model_type=self.model_type,
+                df_trials=df_trials
             )
             # Save updated knowledge base
             save_knowledge_base(self.knowledge_base, self.kb_path)

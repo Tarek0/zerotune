@@ -69,7 +69,8 @@ class ZeroTunePredictor:
         output_dir: str = "models",
         exp_id: Optional[str] = None,
         test_size: float = 0.2,
-        random_state: int = 42
+        random_state: int = 42,
+        top_k_per_seed: int = 3
     ) -> 'ZeroTunePredictor':
         """
         Train a new zero-shot predictor from a knowledge base.
@@ -82,6 +83,7 @@ class ZeroTunePredictor:
             exp_id: Experiment ID for naming (extracted from kb_path if None)
             test_size: Fraction of data to use for testing
             random_state: Random seed for reproducibility
+            top_k_per_seed: Number of top trials to keep per dataset/seed combination
             
         Returns:
             Trained ZeroTunePredictor instance
@@ -95,7 +97,8 @@ class ZeroTunePredictor:
             exp_id=exp_id,
             test_size=test_size,
             random_state=random_state,
-            verbose=True
+            verbose=True,
+            top_k_per_seed=top_k_per_seed
         )
         
         # Load the trained model and create a ZeroTunePredictor instance
@@ -158,6 +161,11 @@ class ZeroTunePredictor:
                         feature_vector[0, i] = (feature_vector[0, i] - min_val) / range_val
                     else:
                         feature_vector[0, i] = 0.0
+        
+        # Apply feature selection if available
+        if 'feature_selector' in self.model_data and self.model_data['feature_selector'] is not None:
+            feature_selector = self.model_data['feature_selector']
+            feature_vector = feature_selector.transform(feature_vector)
         
         # Make prediction using the pre-trained model
         prediction = self.model_data['model'].predict(feature_vector)[0]

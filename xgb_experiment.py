@@ -60,6 +60,8 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import roc_auc_score, accuracy_score, classification_report
 import joblib
 import numpy as np
+import pandas as pd
+import random
 import sys
 import os
 from datetime import datetime
@@ -184,7 +186,8 @@ def train_zero_shot_predictor(kb_path=None, mode="test"):
             model_name="xgboost",
             task_type="binary",
             output_dir="models",
-            exp_id=f"{EXPERIMENT_ID}_{mode}"
+            exp_id=f"{EXPERIMENT_ID}_{mode}",
+            top_k_per_seed=3  # Keep top 3 trials per seed
         )
         
         print(f"\n{'='*60}")
@@ -200,7 +203,103 @@ def train_zero_shot_predictor(kb_path=None, mode="test"):
         print(f"\n❌ Error during predictor training: {str(e)}")
         return None
 
-def test_zero_shot_predictor(model_path=None, mode="test", test_dataset_ids=None):
+def generate_random_hyperparameters(random_state=42):
+    """
+    Generate random hyperparameters for XGBoost as a baseline.
+    
+    Args:
+        random_state: Random seed for reproducibility
+        
+    Returns:
+        Dictionary of random hyperparameters
+    """
+    random.seed(random_state)
+    np.random.seed(random_state)
+    
+    return {
+        'n_estimators': random.randint(10, 1000),
+        'max_depth': random.randint(1, 15),
+        'learning_rate': round(random.uniform(0.01, 0.3), 6),
+        'subsample': round(random.uniform(0.5, 1.0), 6),
+        'colsample_bytree': round(random.uniform(0.5, 1.0), 6)
+    }
+
+def run_benchmark_hpo(X_train, y_train, X_test, y_test, benchmark_type="random", n_trials=10, random_state=42):
+    """
+    Run benchmark hyperparameter optimization.
+    
+    Args:
+        X_train, y_train: Training data
+        X_test, y_test: Test data  
+        benchmark_type: Type of benchmark ("random", "optuna")
+        n_trials: Number of trials for optimization-based benchmarks
+        random_state: Random seed for reproducibility
+        
+    Returns:
+        Tuple of (best_params, best_score, benchmark_info)
+    """
+    if benchmark_type == "random":
+        # Simple random hyperparameters
+        params = generate_random_hyperparameters(random_state)
+        
+        try:
+            model = XGBClassifier(**params, random_state=42)
+            model.fit(X_train, y_train)
+            
+            if hasattr(model, "predict_proba"):
+                y_proba = model.predict_proba(X_test)
+                if y_proba.shape[1] == 2:
+                    score = roc_auc_score(y_test, y_proba[:, 1])
+                else:
+                    score = roc_auc_score(y_test, y_proba, multi_class='ovr')
+            else:
+                y_pred = model.predict(X_test)
+                score = accuracy_score(y_test, y_pred)
+            
+            return params, score, {"type": "random", "trials": 1}
+            
+        except Exception as e:
+            return params, 0.0, {"type": "random", "trials": 1, "error": str(e)}
+    
+    elif benchmark_type == "optuna":
+        # TODO: Implement Optuna HPO benchmark
+        # This will run actual HPO for comparison
+        # For now, return random as placeholder
+        print("⚠️ Optuna benchmark not yet implemented, using random baseline")
+        return run_benchmark_hpo(X_train, y_train, X_test, y_test, "random", n_trials, random_state)
+    
+    else:
+        raise ValueError(f"Unknown benchmark type: {benchmark_type}")
+
+def evaluate_hyperparameters(params, X_train, y_train, X_test, y_test):
+    """
+    Evaluate hyperparameters and return AUC score.
+    
+    Args:
+        params: Hyperparameter dictionary
+        X_train, y_train: Training data
+        X_test, y_test: Test data
+        
+    Returns:
+        AUC score
+    """
+    try:
+        model = XGBClassifier(**params, random_state=42)
+        model.fit(X_train, y_train)
+        
+        if hasattr(model, "predict_proba"):
+            y_proba = model.predict_proba(X_test)
+            if y_proba.shape[1] == 2:
+                return roc_auc_score(y_test, y_proba[:, 1])
+            else:
+                return roc_auc_score(y_test, y_proba, multi_class='ovr')
+        else:
+            y_pred = model.predict(X_test)
+            return accuracy_score(y_test, y_pred)
+    except Exception:
+        return 0.0
+
+def test_zero_shot_predictor(model_path=None, mode="test", test_dataset_ids=None, benchmark_types=["random"], save_csv=True):
     """
     Test a trained zero-shot predictor on unseen datasets.
     
@@ -208,6 +307,8 @@ def test_zero_shot_predictor(model_path=None, mode="test", test_dataset_ids=None
         model_path: Path to trained model (auto-generated if None)
         mode: "test" or "full" to match the model naming convention
         test_dataset_ids: List of dataset IDs to test on (uses UNSEEN_TEST_DATASETS if None)
+        benchmark_types: List of benchmark types to run (["random"], ["optuna"], or ["random", "optuna"])
+        save_csv: Whether to save results to CSV file (default: True)
     """
     print("ZEROTUNE ZERO-SHOT PREDICTOR EVALUATION")
     print("=" * 60)
@@ -312,31 +413,46 @@ def test_zero_shot_predictor(model_path=None, mode="test", test_dataset_ids=None
                 for param, value in predicted_params.items():
                     print(f"  {param}: {value}")
                 
-                # Test the predicted hyperparameters
+                # Split data for evaluation
                 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
                 
-                model = XGBClassifier(**predicted_params, random_state=42)
-                model.fit(X_train, y_train)
+                # Test the predicted hyperparameters
+                auc_predicted = evaluate_hyperparameters(predicted_params, X_train, y_train, X_test, y_test)
+                print(f"✅ Zero-Shot AUC: {auc_predicted:.4f}")
                 
-                # Calculate AUC
-                if hasattr(model, "predict_proba"):
-                    y_proba = model.predict_proba(X_test)
-                    if y_proba.shape[1] == 2:
-                        auc_score = roc_auc_score(y_test, y_proba[:, 1])
-                    else:
-                        auc_score = roc_auc_score(y_test, y_proba, multi_class='ovr')
-                else:
-                    y_pred = model.predict(X_test)
-                    auc_score = accuracy_score(y_test, y_pred)
-                    print("Warning: Using accuracy instead of AUC")
+                # Run benchmarks
+                benchmark_results = {}
                 
-                print(f"✅ Test AUC: {auc_score:.4f}")
+                for benchmark_type in benchmark_types:
+                    print(f"\n🔄 Running {benchmark_type} benchmark...")
+                    
+                    benchmark_params, benchmark_score, benchmark_info = run_benchmark_hpo(
+                        X_train, y_train, X_test, y_test, 
+                        benchmark_type=benchmark_type,
+                        random_state=dataset_id
+                    )
+                    
+                    uplift = auc_predicted - benchmark_score
+                    
+                    print(f"📊 {benchmark_type.title()} hyperparameters:")
+                    for param, value in benchmark_params.items():
+                        print(f"  {param}: {value}")
+                    print(f"📊 {benchmark_type.title()} AUC: {benchmark_score:.4f}")
+                    print(f"🚀 Uplift vs {benchmark_type}: {uplift:+.4f} ({(uplift/benchmark_score*100):+.1f}%)")
+                    
+                    benchmark_results[benchmark_type] = {
+                        'params': benchmark_params,
+                        'score': benchmark_score,
+                        'uplift': uplift,
+                        'info': benchmark_info
+                    }
                 
                 results.append({
                     'dataset_id': dataset_id,
                     'dataset_name': dataset_name,
-                    'auc_score': auc_score,
+                    'auc_predicted': auc_predicted,
                     'predicted_params': predicted_params,
+                    'benchmarks': benchmark_results,
                     'shape': X.shape
                 })
                 
@@ -345,7 +461,8 @@ def test_zero_shot_predictor(model_path=None, mode="test", test_dataset_ids=None
                 results.append({
                     'dataset_id': dataset_id,
                     'dataset_name': f"Dataset_{dataset_id}",
-                    'auc_score': 0.0,
+                    'auc_predicted': 0.0,
+                    'benchmarks': {},
                     'error': str(e)
                 })
         
@@ -358,23 +475,111 @@ def test_zero_shot_predictor(model_path=None, mode="test", test_dataset_ids=None
         failed_tests = [r for r in results if 'error' in r]
         
         if successful_tests:
-            auc_scores = [r['auc_score'] for r in successful_tests]
-            avg_auc = np.mean(auc_scores)
-            std_auc = np.std(auc_scores)
+            auc_predicted_scores = [r['auc_predicted'] for r in successful_tests]
+            avg_auc_predicted = np.mean(auc_predicted_scores)
+            std_auc_predicted = np.std(auc_predicted_scores)
             
             print(f"📊 Successful tests: {len(successful_tests)}/{len(test_dataset_ids)}")
-            print(f"📊 Average AUC: {avg_auc:.4f} ± {std_auc:.4f}")
-            print(f"📊 Best AUC: {max(auc_scores):.4f}")
-            print(f"📊 Worst AUC: {min(auc_scores):.4f}")
+            print(f"📊 Zero-Shot Average AUC: {avg_auc_predicted:.4f} ± {std_auc_predicted:.4f}")
+            print(f"📊 Zero-Shot Best AUC: {max(auc_predicted_scores):.4f}")
+            print(f"📊 Zero-Shot Worst AUC: {min(auc_predicted_scores):.4f}")
+            
+            # Calculate benchmark statistics for each benchmark type
+            for benchmark_type in benchmark_types:
+                benchmark_scores = []
+                uplift_scores = []
+                
+                for result in successful_tests:
+                    if benchmark_type in result['benchmarks']:
+                        benchmark_scores.append(result['benchmarks'][benchmark_type]['score'])
+                        uplift_scores.append(result['benchmarks'][benchmark_type]['uplift'])
+                
+                if benchmark_scores:
+                    avg_benchmark = np.mean(benchmark_scores)
+                    std_benchmark = np.std(benchmark_scores)
+                    avg_uplift = np.mean(uplift_scores)
+                    std_uplift = np.std(uplift_scores)
+                    
+                    print(f"\n📊 {benchmark_type.title()} Benchmark Results:")
+                    print(f"📊 {benchmark_type.title()} Average AUC: {avg_benchmark:.4f} ± {std_benchmark:.4f}")
+                    print(f"🚀 Average Uplift vs {benchmark_type}: {avg_uplift:+.4f} ± {std_uplift:.4f}")
+                    if avg_benchmark > 0:
+                        print(f"🚀 Relative Improvement vs {benchmark_type}: {(avg_uplift/avg_benchmark*100):+.1f}%")
+                    
+                    # Count positive uplifts
+                    positive_uplifts = len([u for u in uplift_scores if u > 0])
+                    print(f"🎯 Datasets with positive uplift: {positive_uplifts}/{len(uplift_scores)} ({positive_uplifts/len(uplift_scores)*100:.1f}%)")
             
             print(f"\nDetailed Results:")
-            for result in successful_tests:
-                print(f"  {result['dataset_id']:<6} {result['dataset_name']:<30} AUC: {result['auc_score']:.4f}")
+            if benchmark_types:
+                # Create header with all benchmark types
+                header = f"{'ID':<6} {'Dataset Name':<30} {'Zero-Shot':<10}"
+                for benchmark_type in benchmark_types:
+                    header += f" {benchmark_type.title():<10} {f'{benchmark_type.title()}_Uplift':<12}"
+                print(header)
+                print("-" * len(header))
+                
+                for result in successful_tests:
+                    row = f"  {result['dataset_id']:<6} {result['dataset_name']:<30} {result['auc_predicted']:<10.4f}"
+                    
+                    for benchmark_type in benchmark_types:
+                        if benchmark_type in result['benchmarks']:
+                            benchmark_data = result['benchmarks'][benchmark_type]
+                            score_str = f"{benchmark_data['score']:.4f}"
+                            uplift_str = f"{benchmark_data['uplift']:+.4f}"
+                        else:
+                            score_str = "N/A"
+                            uplift_str = "N/A"
+                        
+                        row += f" {score_str:<10} {uplift_str:<12}"
+                    
+                    print(row)
+            else:
+                for result in successful_tests:
+                    print(f"  {result['dataset_id']:<6} {result['dataset_name']:<30} AUC: {result['auc_predicted']:.4f}")
         
         if failed_tests:
             print(f"\n❌ Failed tests: {len(failed_tests)}")
             for result in failed_tests:
                 print(f"  {result['dataset_id']:<6} {result['dataset_name']:<30} ERROR: {result['error']}")
+        
+        # Save results to CSV if requested
+        if save_csv and results:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            csv_filename = f"benchmark_results_{EXPERIMENT_ID}_{mode}_{timestamp}.csv"
+            
+            print(f"\n💾 Saving results to CSV: {csv_filename}")
+            
+            # Prepare data for CSV
+            csv_data = []
+            for result in results:
+                row = {
+                    'dataset_id': result['dataset_id'],
+                    'dataset_name': result['dataset_name'],
+                    'auc_predicted': result['auc_predicted'],
+                    'n_samples': result['shape'][0] if 'shape' in result else None,
+                    'n_features': result['shape'][1] if 'shape' in result else None,
+                    'error': result.get('error', None)
+                }
+                
+                # Add benchmark results
+                for benchmark_type in benchmark_types:
+                    if 'benchmarks' in result and benchmark_type in result['benchmarks']:
+                        benchmark_data = result['benchmarks'][benchmark_type]
+                        row[f'auc_{benchmark_type}'] = benchmark_data['score']
+                        row[f'uplift_{benchmark_type}'] = benchmark_data['uplift']
+                        row[f'uplift_{benchmark_type}_pct'] = (benchmark_data['uplift'] / benchmark_data['score'] * 100) if benchmark_data['score'] > 0 else 0
+                    else:
+                        row[f'auc_{benchmark_type}'] = None
+                        row[f'uplift_{benchmark_type}'] = None
+                        row[f'uplift_{benchmark_type}_pct'] = None
+                
+                csv_data.append(row)
+            
+            # Create DataFrame and save
+            df = pd.DataFrame(csv_data)
+            df.to_csv(csv_filename, index=False)
+            print(f"✅ Benchmark results saved to: {csv_filename}")
         
         return results
         
@@ -458,12 +663,12 @@ def main():
     elif mode == "eval-test":
         # Evaluate trained predictor from test KB on unseen datasets
         print("Evaluating TEST predictor on unseen datasets...")
-        results = test_zero_shot_predictor(mode="test")
+        results = test_zero_shot_predictor(mode="test", benchmark_types=["random"])
         
     elif mode == "eval-full":
         # Evaluate trained predictor from full KB on unseen datasets
         print("Evaluating FULL predictor on unseen datasets...")
-        results = test_zero_shot_predictor(mode="full")
+        results = test_zero_shot_predictor(mode="full", benchmark_types=["random"])
         
     elif mode == "info":
         # Show dataset information
@@ -474,8 +679,8 @@ def main():
         print("  python xgb_experiment.py full         # Build full KB (15 datasets, 20 iter)")
         print("  python xgb_experiment.py train-test   # Train predictor from test KB")
         print("  python xgb_experiment.py train-full   # Train predictor from full KB")
-        print("  python xgb_experiment.py eval-test    # Evaluate test predictor on unseen data")
-        print("  python xgb_experiment.py eval-full    # Evaluate full predictor on unseen data")
+        print("  python xgb_experiment.py eval-test    # Evaluate test predictor vs random baseline")
+        print("  python xgb_experiment.py eval-full    # Evaluate full predictor vs random baseline")
         print("  python xgb_experiment.py info         # Show dataset information")
         print("\nComplete Workflow:")
         print("  1. Build knowledge base: python xgb_experiment.py test")

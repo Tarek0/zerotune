@@ -106,7 +106,7 @@ class ModelConfigs:
             ),
             'metric': 'roc_auc',
             'param_config': {
-                'n_estimators': {'percentage_splits': [0.1, 0.2, 0.3, 0.4, 0.5], 'param_type': "int", 'dependency': 'n_features', 'multiplier': 100},
+                'n_estimators': [50, 100, 200, 500, 1000],
                 'max_depth': {'percentage_splits': [0.1, 0.2, 0.3, 0.4, 0.5], 'param_type': "int", 'dependency': 'n_samples'},
                 'learning_rate': {'percentage_splits': [0.01, 0.05, 0.1, 0.2, 0.3], 'param_type': "float"},
                 'subsample': {'percentage_splits': [0.5, 0.6, 0.7, 0.8, 0.9], 'param_type': "float"},
