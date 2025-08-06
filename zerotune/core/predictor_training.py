@@ -11,11 +11,12 @@ import joblib
 import numpy as np
 from typing import Dict, Any, Optional, List, Tuple
 from sklearn.ensemble import RandomForestRegressor
-from sklearn.model_selection import train_test_split, GroupShuffleSplit
+from sklearn.model_selection import train_test_split, GroupShuffleSplit, RandomizedSearchCV
 from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
 from sklearn.feature_selection import RFECV
 from sklearn.model_selection import GroupKFold
 from sklearn.metrics import make_scorer
+from sklearn.multioutput import MultiOutputRegressor
 
 
 class CombinedFeatureSelector:
@@ -32,6 +33,102 @@ class CombinedFeatureSelector:
         
     def get_support(self, indices=False):
         return self.support_ if not indices else np.where(self.support_)[0]
+
+
+def _calculate_performance_weighted_error(
+    y_true_params: np.ndarray, 
+    y_pred_params: np.ndarray, 
+    performance_gains: np.ndarray,
+    param_names: List[str]
+) -> Dict[str, float]:
+    """
+    Calculate performance-weighted prediction error that weights parameter errors 
+    by their impact on final model performance.
+    
+    Args:
+        y_true_params: True parameter values (n_samples, n_params)
+        y_pred_params: Predicted parameter values (n_samples, n_params)
+        performance_gains: Performance scores for each sample (n_samples,)
+        param_names: Names of parameters
+        
+    Returns:
+        Dictionary with weighted error metrics
+    """
+    if len(performance_gains) != len(y_true_params):
+        raise ValueError("Performance gains must match number of samples")
+    
+    # Normalize performance gains to use as weights (higher performance = higher weight)
+    perf_weights = performance_gains / np.sum(performance_gains) if np.sum(performance_gains) > 0 else np.ones_like(performance_gains) / len(performance_gains)
+    
+    # Calculate parameter-wise absolute errors
+    param_errors = np.abs(y_true_params - y_pred_params)
+    
+    # Calculate weighted errors per parameter
+    weighted_errors = {}
+    for i, param_name in enumerate(param_names):
+        # Weight each sample's error by its performance
+        weighted_error = np.sum(param_errors[:, i] * perf_weights)
+        weighted_errors[param_name] = weighted_error
+    
+    # Calculate overall weighted error
+    overall_weighted_error = np.mean([weighted_errors[param] for param in param_names])
+    
+    return {
+        'overall_weighted_error': overall_weighted_error,
+        'param_weighted_errors': weighted_errors,
+        'performance_correlation': np.corrcoef(performance_gains, np.mean(param_errors, axis=1))[0, 1] if len(performance_gains) > 1 else 0.0
+    }
+
+
+def _calculate_overfitting_metrics(
+    model, 
+    X_train: np.ndarray, 
+    y_train: np.ndarray,
+    X_test: np.ndarray, 
+    y_test: np.ndarray,
+    groups_train: np.ndarray,
+    cv_strategy
+) -> Dict[str, float]:
+    """
+    Calculate metrics to detect overfitting in the meta-learner.
+    
+    Returns:
+        Dictionary with overfitting detection metrics
+    """
+    # Training performance
+    y_train_pred = model.predict(X_train)
+    train_r2 = r2_score(y_train, y_train_pred, multioutput='uniform_average')
+    train_mae = mean_absolute_error(y_train, y_train_pred, multioutput='uniform_average')
+    
+    # Test performance
+    y_test_pred = model.predict(X_test)
+    test_r2 = r2_score(y_test, y_test_pred, multioutput='uniform_average')
+    test_mae = mean_absolute_error(y_test, y_test_pred, multioutput='uniform_average')
+    
+    # Cross-validation performance (more robust estimate)
+    from sklearn.model_selection import cross_val_score
+    cv_scores = cross_val_score(model, X_train, y_train, cv=cv_strategy, 
+                               scoring='neg_mean_absolute_error', groups=groups_train)
+    cv_mae = -np.mean(cv_scores)
+    cv_mae_std = np.std(cv_scores)
+    
+    # Calculate overfitting indicators
+    r2_gap = train_r2 - test_r2  # Positive indicates overfitting
+    mae_gap = test_mae - train_mae  # Positive indicates overfitting
+    cv_stability = cv_mae_std / cv_mae if cv_mae > 0 else float('inf')  # High values indicate instability
+    
+    return {
+        'train_r2': train_r2,
+        'test_r2': test_r2,
+        'train_mae': train_mae,
+        'test_mae': test_mae,
+        'cv_mae_mean': cv_mae,
+        'cv_mae_std': cv_mae_std,
+        'r2_gap': r2_gap,  # train - test (positive = overfitting)
+        'mae_gap': mae_gap,  # test - train (positive = overfitting)
+        'cv_stability': cv_stability,  # std/mean (lower = more stable)
+        'overfitting_score': max(0, r2_gap) + max(0, mae_gap/train_mae if train_mae > 0 else 0)  # Combined overfitting indicator
+    }
 
 
 def train_predictor_from_knowledge_base(
@@ -73,7 +170,7 @@ def train_predictor_from_knowledge_base(
         kb_data = json.load(f)
     
     # Extract training data from knowledge base
-    X_features, y_params, feature_names, param_names, dataset_groups = _prepare_training_data(kb_data, top_k_trials, verbose)
+    X_features, y_params, feature_names, param_names, dataset_groups, performance_scores = _prepare_training_data(kb_data, top_k_trials, verbose)
     
     if len(X_features) == 0:
         raise ValueError("No training data found in knowledge base")
@@ -102,12 +199,12 @@ def train_predictor_from_knowledge_base(
         y_train, y_test = y_params[train_idx], y_params[test_idx]
         groups_train, groups_test = dataset_groups[train_idx], dataset_groups[test_idx]
     
-    # Calculate normalization parameters from training data
-    normalization_params = _calculate_normalization_params(X_train, feature_names)
+    # Skip normalization to test performance without it
+    normalization_params = {}  # Empty dict to avoid breaking model saving
     
-    # Normalize features
-    X_train_norm = _normalize_features(X_train, normalization_params)
-    X_test_norm = _normalize_features(X_test, normalization_params)
+    # Use raw features without normalization
+    X_train_norm = X_train  # Keep same variable names for consistency
+    X_test_norm = X_test
     
     if verbose:
         print(f"Training set: {X_train_norm.shape[0]} samples")
@@ -120,15 +217,41 @@ def train_predictor_from_knowledge_base(
     from sklearn.model_selection import RandomizedSearchCV, GroupKFold
     from scipy.stats import randint as sp_randint
     
-    # Define hyperparameter search space for the predictor itself (much simpler to avoid overfitting)
-    param_dist = {
-        'n_estimators': sp_randint(10, 50),           # Much fewer trees
-        'max_depth': [3, 5, 7, 10],                  # Much shallower trees  
-        'min_samples_split': sp_randint(10, 30),     # Higher regularization
-        'min_samples_leaf': sp_randint(5, 15),       # Higher regularization
-        'max_features': ['sqrt', 'log2'],            # Feature subsampling only
-        'bootstrap': [True]                          # Always use bootstrap
-    }
+    # Adaptive hyperparameter search space based on dataset size to prevent overfitting
+    n_samples = len(X_train)
+    n_features = X_train.shape[1]
+    
+    # Ultra-aggressive regularization for small datasets to prevent overfitting
+    if n_samples < 50:
+        # Extremely small dataset - use minimal models with maximum regularization
+        param_dist = {
+            'n_estimators': [1, 2],                      # Only 1-2 trees
+            'max_depth': [1],                            # Only stumps (depth 1)
+            'min_samples_split': [max(3, n_samples//2)], # Split only with many samples
+            'min_samples_leaf': [max(2, n_samples//4)],  # Very large leaves
+            'max_features': [1],                         # Only 1 feature per tree
+            'bootstrap': [True]
+        }
+    elif n_samples < 100:
+        # Small dataset - extremely aggressive regularization  
+        param_dist = {
+            'n_estimators': sp_randint(1, 5),            # Very few trees
+            'max_depth': [1, 2, 3],                      # Very shallow trees
+            'min_samples_split': [max(5, n_samples//4)], # High regularization
+            'min_samples_leaf': [max(3, n_samples//10)], # High regularization
+            'max_features': [1, 2, 3],                   # Very few features (absolute)
+            'bootstrap': [True]
+        }
+    else:
+        # Larger dataset - moderate regularization
+        param_dist = {
+            'n_estimators': sp_randint(3, 10),           # Still conservative
+            'max_depth': [2, 3, 5],                      # Shallow trees
+            'min_samples_split': sp_randint(15, 30),     # Higher regularization
+            'min_samples_leaf': sp_randint(8, 15),       # Higher regularization
+            'max_features': ['sqrt'],                    # Conservative feature selection
+            'bootstrap': [True]
+        }
     
     # Create base regressor
     base_regressor = RandomForestRegressor(random_state=random_state)
@@ -142,13 +265,25 @@ def train_predictor_from_knowledge_base(
         print(f"Using GroupKFold with {min(4, n_groups)} splits")
         print("Training predictor with hyperparameter optimization...")
     
+    # Adaptive hyperparameter optimization based on dataset size
+    # Fewer iterations for smaller datasets to prevent overfitting
+    if n_samples < 50:
+        n_iter_search = 20  # Fewer iterations for small datasets
+    elif n_samples < 100:
+        n_iter_search = 30
+    else:
+        n_iter_search = 50
+    
+    if verbose:
+        print(f"Using {n_iter_search} iterations for hyperparameter search (dataset size: {n_samples})")
+    
     # Hyperparameter optimization for the predictor itself
     search = RandomizedSearchCV(
         regressor,
         param_distributions={'estimator__' + key: value for key, value in param_dist.items()},
-        n_iter=50,
+        n_iter=n_iter_search,
         cv=cv_strategy,
-        scoring='neg_mean_squared_error',
+        scoring='neg_mean_absolute_error',
         n_jobs=-1,
         random_state=random_state,
         verbose=0
@@ -168,8 +303,17 @@ def train_predictor_from_knowledge_base(
     from sklearn.feature_selection import RFECV
     from sklearn.metrics import make_scorer
     
-    # Define minimum number of features to select (at least 25% or 5, whichever is higher)
-    min_features = max(5, len(feature_names) // 4)
+    # Ultra-aggressive feature selection to prevent overfitting
+    # Force very few features for small datasets
+    if n_samples < 50:
+        min_features = min(3, len(feature_names) // 8)  # Extremely conservative
+        max_features_select = min(6, len(feature_names) // 4)  # Hard cap
+    elif n_samples < 100:
+        min_features = min(4, len(feature_names) // 6)  # Very conservative
+        max_features_select = min(8, len(feature_names) // 3)  # Hard cap
+    else:
+        min_features = max(5, len(feature_names) // 4)  # Standard
+        max_features_select = len(feature_names)  # No hard cap
     
     if verbose:
         print(f"Performing feature selection with RFECV (min features: {min_features})...")
@@ -224,6 +368,43 @@ def train_predictor_from_knowledge_base(
     for idx in important_indices:
         selected_feature_mask[idx] = True
     
+    # Apply hard cap on number of features for small datasets
+    n_selected = np.sum(selected_feature_mask)
+    if n_selected > max_features_select:
+        if verbose:
+            print(f"⚠️  Too many features selected ({n_selected}), applying hard cap ({max_features_select})")
+        
+        # Keep only the most important features
+        selected_indices = np.where(selected_feature_mask)[0]
+        
+        # Always keep the forced important features
+        important_mask = np.zeros_like(selected_feature_mask, dtype=bool)
+        for idx in important_indices:
+            important_mask[idx] = True
+        
+        # For remaining slots, keep highest scoring RFECV features
+        remaining_slots = max_features_select - len(important_indices)
+        if remaining_slots > 0:
+            # Get RFECV scores for non-important features
+            non_important_indices = selected_indices[~important_mask[selected_indices]]
+            if hasattr(rfecv, 'ranking_'):
+                # Sort by RFECV ranking (lower is better)
+                rankings = [(idx, rfecv.ranking_[idx]) for idx in non_important_indices]
+                rankings.sort(key=lambda x: x[1])
+                selected_additional = [idx for idx, _ in rankings[:remaining_slots]]
+            else:
+                # Fallback: keep first few non-important features
+                selected_additional = non_important_indices[:remaining_slots]
+            
+            # Create final mask
+            final_mask = np.zeros_like(selected_feature_mask, dtype=bool)
+            for idx in important_indices:
+                final_mask[idx] = True
+            for idx in selected_additional:
+                final_mask[idx] = True
+            
+            selected_feature_mask = final_mask
+    
     X_train_selected = X_train_norm[:, selected_feature_mask]
     X_test_selected = X_test_norm[:, selected_feature_mask]
     selected_features = [feature_names[i] for i in range(len(feature_names)) if selected_feature_mask[i]]
@@ -232,12 +413,63 @@ def train_predictor_from_knowledge_base(
         print(f"Final feature set: {len(selected_features)} features")
         print(f"Selected features: {selected_features}")
     
-    # Train final model on selected features
-    final_predictor = MultiOutputRegressor(
-        RandomForestRegressor(**{k.replace('estimator__', ''): v for k, v in search.best_params_.items()}, 
-                             random_state=random_state)
-    )
-    final_predictor.fit(X_train_selected, y_train)
+    # Train final model on selected features with iterative overfitting prevention
+    best_params_cleaned = {k.replace('estimator__', ''): v for k, v in search.best_params_.items()}
+    
+    # Iterative overfitting prevention - try progressively simpler models
+    max_iterations = 3
+    overfitting_threshold = 0.15  # Maximum acceptable overfitting score
+    
+    for iteration in range(max_iterations):
+        # Create predictor with current parameters
+        current_predictor = MultiOutputRegressor(
+            RandomForestRegressor(**best_params_cleaned, random_state=random_state)
+        )
+        current_predictor.fit(X_train_selected, y_train)
+        
+        # Check for overfitting if we have test data
+        if test_size > 0:
+            temp_overfitting_metrics = _calculate_overfitting_metrics(
+                current_predictor, X_train_selected, y_train, 
+                X_test_selected, y_test, groups_train, cv_strategy
+            )
+            
+            overfitting_score = temp_overfitting_metrics['overfitting_score']
+            
+            if verbose and iteration > 0:
+                print(f"Iteration {iteration + 1}: Overfitting score = {overfitting_score:.4f}")
+            
+            # If overfitting is acceptable, use this model
+            if overfitting_score <= overfitting_threshold:
+                final_predictor = current_predictor
+                if verbose and iteration > 0:
+                    print(f"✅ Overfitting resolved after {iteration + 1} iterations")
+                break
+            
+            # If this is the last iteration, use the current model anyway
+            if iteration == max_iterations - 1:
+                final_predictor = current_predictor
+                if verbose:
+                    print(f"⚠️  Using model after {max_iterations} iterations (overfitting score: {overfitting_score:.4f})")
+                break
+            
+            # Simplify model for next iteration
+            if verbose:
+                print(f"🔄 High overfitting detected (score: {overfitting_score:.4f}), simplifying model...")
+            
+            # Reduce model complexity
+            if 'n_estimators' in best_params_cleaned:
+                best_params_cleaned['n_estimators'] = max(3, int(best_params_cleaned['n_estimators'] * 0.6))
+            if 'max_depth' in best_params_cleaned:
+                best_params_cleaned['max_depth'] = max(2, best_params_cleaned['max_depth'] - 1)
+            if 'min_samples_split' in best_params_cleaned:
+                best_params_cleaned['min_samples_split'] = min(len(X_train)//2, int(best_params_cleaned['min_samples_split'] * 1.5))
+            if 'min_samples_leaf' in best_params_cleaned:
+                best_params_cleaned['min_samples_leaf'] = min(len(X_train)//4, int(best_params_cleaned['min_samples_leaf'] * 1.3))
+        else:
+            # No test data, just use the model as is
+            final_predictor = current_predictor
+            break
     
     # Evaluate on test set
     if test_size > 0:
@@ -254,6 +486,18 @@ def train_predictor_from_knowledge_base(
         # Calculate Top-K accuracy
         top_k_scores = _calculate_top_k_accuracy(y_test, y_pred, param_names, k_values=[1, 3, 5])
         
+        # Calculate performance-weighted error
+        test_performance_scores = performance_scores[len(X_train):]  # Get test set performance scores
+        weighted_error_metrics = _calculate_performance_weighted_error(
+            y_test, y_pred, test_performance_scores, param_names
+        )
+        
+        # Calculate overfitting metrics
+        overfitting_metrics = _calculate_overfitting_metrics(
+            final_predictor, X_train_selected, y_train, 
+            X_test_selected, y_test, groups_train, cv_strategy
+        )
+        
         if verbose:
             print(f"\n=== PREDICTOR EVALUATION ===")
             print(f"R² Score: {r2:.4f}")
@@ -264,6 +508,29 @@ def train_predictor_from_knowledge_base(
             print("Top-K Accuracy (better than random):")
             for k, acc in top_k_scores.items():
                 print(f"  Top-{k}: {acc:.1%}")
+            
+            print(f"\n=== PERFORMANCE-WEIGHTED METRICS ===")
+            print(f"Overall Weighted Error: {weighted_error_metrics['overall_weighted_error']:.4f}")
+            print(f"Performance Correlation: {weighted_error_metrics['performance_correlation']:.4f}")
+            print("Parameter-wise Weighted Errors:")
+            for param, error in weighted_error_metrics['param_weighted_errors'].items():
+                print(f"  {param}: {error:.4f}")
+            
+            print(f"\n=== OVERFITTING DETECTION ===")
+            print(f"Training R²: {overfitting_metrics['train_r2']:.4f}")
+            print(f"Test R²: {overfitting_metrics['test_r2']:.4f}")
+            print(f"R² Gap (train-test): {overfitting_metrics['r2_gap']:.4f}")
+            print(f"MAE Gap (test-train): {overfitting_metrics['mae_gap']:.4f}")
+            print(f"CV Stability: {overfitting_metrics['cv_stability']:.4f}")
+            print(f"Overfitting Score: {overfitting_metrics['overfitting_score']:.4f}")
+            
+            # Overfitting warnings
+            if overfitting_metrics['overfitting_score'] > 0.1:
+                print("⚠️  WARNING: High overfitting detected!")
+            if overfitting_metrics['cv_stability'] > 0.3:
+                print("⚠️  WARNING: High cross-validation instability!")
+            if overfitting_metrics['r2_gap'] > 0.2:
+                print("⚠️  WARNING: Large train-test R² gap!")
     
     # Create combined feature selector for saving
     feature_selector = CombinedFeatureSelector(selected_feature_mask)
@@ -286,6 +553,8 @@ def train_predictor_from_knowledge_base(
             'r2_score': r2 if test_size > 0 else None,
             'average_nmae': avg_nmae if test_size > 0 else None,
             'top_k_accuracy': top_k_scores if test_size > 0 else None,
+            'weighted_error_metrics': weighted_error_metrics if test_size > 0 else None,
+            'overfitting_metrics': overfitting_metrics if test_size > 0 else None,
             'best_predictor_params': search.best_params_,
             'selected_feature_count': len(selected_features)
         }
@@ -323,7 +592,7 @@ def train_predictor_from_knowledge_base(
     return model_path
 
 
-def _prepare_training_data(kb_data: Dict[str, Any], top_k_trials: int = 3, verbose: bool = True) -> Tuple[np.ndarray, np.ndarray, List[str], List[str], np.ndarray]:
+def _prepare_training_data(kb_data: Dict[str, Any], top_k_trials: int = 3, verbose: bool = True) -> Tuple[np.ndarray, np.ndarray, List[str], List[str], np.ndarray, np.ndarray]:
     """
     Prepare training data from knowledge base, filtering to top-k trials per dataset.
     
@@ -333,7 +602,7 @@ def _prepare_training_data(kb_data: Dict[str, Any], top_k_trials: int = 3, verbo
         verbose: Whether to print progress information
         
     Returns:
-        Tuple of (X_features, y_params, feature_names, param_names, dataset_groups)
+        Tuple of (X_features, y_params, feature_names, param_names, dataset_groups, performance_scores)
     """
     import pandas as pd
     
@@ -364,6 +633,7 @@ def _prepare_training_data(kb_data: Dict[str, Any], top_k_trials: int = 3, verbo
     X_features = []
     y_params = []
     dataset_groups = []  # Track which dataset each sample comes from
+    performance_scores = []  # Track performance scores for each sample
     param_names = None
     total_trials_before = 0
     total_trials_after = 0
@@ -417,6 +687,10 @@ def _prepare_training_data(kb_data: Dict[str, Any], top_k_trials: int = 3, verbo
                             param_vector.append(0.0)  # Default value if missing
                     y_params.append(param_vector)
                     
+                    # Performance score (from this specific trial)
+                    performance_score = trial.get('value', 0.0)
+                    performance_scores.append(performance_score)
+                    
                     # Dataset group (for preventing data leakage in cross-validation)
                     dataset_groups.append(i)
         else:
@@ -435,6 +709,10 @@ def _prepare_training_data(kb_data: Dict[str, Any], top_k_trials: int = 3, verbo
                 param_vector = [best_params.get(pname, 0.0) for pname in param_names]
                 y_params.append(param_vector)
                 
+                # Performance score (use best_score if available)
+                performance_score = result.get('best_score', result.get('score', 0.5))  # Default to 0.5 if no score
+                performance_scores.append(performance_score)
+                
                 # Dataset group
                 dataset_groups.append(i)
                 
@@ -446,10 +724,10 @@ def _prepare_training_data(kb_data: Dict[str, Any], top_k_trials: int = 3, verbo
         print(f"Filtered trials: {total_trials_before} → {total_trials_after} (kept top-{top_k_trials} per dataset)")
     
     if not X_features:
-        return np.array([]), np.array([]), [], [], np.array([])
+        return np.array([]), np.array([]), [], [], np.array([]), np.array([])
     
     return (np.array(X_features), np.array(y_params), feature_names, 
-            param_names or [], np.array(dataset_groups))
+            param_names or [], np.array(dataset_groups), np.array(performance_scores))
 
 
 def _calculate_normalization_params(X: np.ndarray, feature_names: List[str]) -> Dict[str, Dict[str, float]]:

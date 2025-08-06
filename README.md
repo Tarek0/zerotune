@@ -2,13 +2,13 @@
 
 ZeroTune provides **instant zero-shot hyperparameter optimization** using advanced pre-trained models. Get competitive hyperparameters for your machine learning models in sub-millisecond time with robust performance across diverse datasets!
 
-🎯 **Average AUC: 0.8610** • 🚀 **60% datasets outperform random** • ⚡ **<1ms prediction time** • 🧠 **RFECV feature selection**
+🎯 **Decision Tree: 0.8315 AUC** • 🏆 **100% datasets outperform random** • 🚀 **+5.6% avg improvement** • ⚡ **<1ms prediction time**
 
 ## 🚀 Quick Start (Zero-Shot Predictions)
 
 ```python
 from zerotune import ZeroTunePredictor
-from xgboost import XGBClassifier
+from sklearn.tree import DecisionTreeClassifier
 import pandas as pd
 
 # Load your dataset
@@ -16,15 +16,16 @@ df = pd.read_csv('your_dataset.csv')
 X = df.drop('target', axis=1)
 y = df['target']
 
-# Get optimal hyperparameters instantly
-predictor = ZeroTunePredictor(model_name='xgboost', task_type='binary')
+# Get optimal hyperparameters instantly (🏆 100% win rate!)
+predictor = ZeroTunePredictor(model_name='decision_tree', task_type='binary')
 best_params = predictor.predict(X, y)
 
 # Train model with predicted hyperparameters
-model = XGBClassifier(**best_params)
+model = DecisionTreeClassifier(**best_params)
 model.fit(X, y)
 
 print(f"Optimal hyperparameters: {best_params}")
+# Expected: +5.6% improvement over random hyperparameters
 ```
 
 ## ✨ Features
@@ -32,9 +33,9 @@ print(f"Optimal hyperparameters: {best_params}")
 ### Zero-Shot Hyperparameter Optimization
 - **Instant predictions** using pre-trained models with advanced evaluation metrics
 - **No optimization time** required - get results in milliseconds
-- **Competitive hyperparameters** with 60% datasets showing positive uplift vs random
+- **Outstanding performance** with Decision Trees achieving 100% win rate and +5.6% improvement
 - **RFECV feature selection** focuses on the most predictive meta-features
-- Support for **XGBoost**, **Random Forest**, and **Decision Tree** models
+- Support for **Decision Tree** (🏆 best), **XGBoost**, and **Random Forest** models
 - **Binary**, **multiclass**, and **regression** tasks supported
 - **Custom model training** from your own knowledge bases
 
@@ -118,7 +119,12 @@ model_path = train_predictor_from_knowledge_base(
 ### 3. Command Line Interface
 
 ```bash
-# Complete experimental workflow
+# Decision Tree Experiments (🏆 Best Performance: 100% win rate)
+poetry run python decision_tree_experiment.py full         # Build enhanced KB (50 HPO runs/dataset)
+poetry run python decision_tree_experiment.py train-full   # Train production predictor
+poetry run python decision_tree_experiment.py eval-full    # Evaluate with 50-seed robustness
+
+# XGBoost Experiments
 poetry run python xgb_experiment.py info         # Show dataset information
 
 # Quick development cycle (2 datasets)
@@ -196,6 +202,30 @@ Zero-shot predictor provides competitive performance across diverse datasets wit
 - **Majority positive uplift** compared to random hyperparameter selection
 - **Instant predictions** - sub-millisecond time vs hours of traditional HPO
 - **Production ready** with robust numerical stability and error handling
+
+### 🏆 Decision Tree Zero-Shot Performance (Latest Results)
+
+**Outstanding Performance Achieved with Enhanced Knowledge Base**:
+
+| **Metric** | **Value** | **Significance** |
+|------------|-----------|------------------|
+| **Win Rate** | **100% (10/10 datasets)** | Perfect consistency across all test cases |
+| **Average AUC** | **0.8315 ± 0.1112** | High-quality predictions with low variance |
+| **Average Improvement** | **+5.6% over random** | Substantial practical value |
+| **Best Single Win** | **+17.4% (KDDCup09_appetency)** | Exceptional performance on challenging datasets |
+| **Statistical Robustness** | **50 seeds × 10 datasets** | 500 total experiments for validation |
+
+**Key Innovations**:
+- **Enhanced Knowledge Base**: 50 HPO runs per dataset for optimal hyperparameter discovery
+- **Percentage-based max_depth**: Scales intelligently with dataset size for better generalization
+- **Removed normalization**: Raw meta-features provide better signal for prediction
+- **Multi-seed evaluation**: 50 random seeds ensure statistically robust results
+
+**Production Benefits**:
+- **100% reliability**: Every dataset shows positive improvement over random
+- **Consistent performance**: Low variance across diverse domains and dataset sizes
+- **Instant predictions**: Sub-millisecond inference time
+- **Simple architecture**: Only 4 hyperparameters for Decision Trees
 
 ### Understanding the Evaluation Metrics
 

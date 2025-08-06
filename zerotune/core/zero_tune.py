@@ -160,8 +160,18 @@ class ZeroTune:
                 if param_info.get('dependency') == 'n_samples':
                     # Parameters that depend on dataset size
                     if param_name == 'max_depth':
-                        max_depth = max(1, int(np.log2(n_samples)))
-                        param_grid[param_name] = (1, max_depth, "int")
+                        # Convert percentage splits to actual depth values based on n_samples
+                        depth_values = []
+                        for split in splits:
+                            if split == 0.999:  # Special case for "unlimited" depth
+                                depth_val = max(1, int(np.log2(n_samples) * 2))  # Allow deeper trees for large datasets
+                            else:
+                                depth_val = max(1, int(np.log2(n_samples) * split))
+                            depth_values.append(depth_val)
+                        
+                        min_depth = min(depth_values)
+                        max_depth = max(depth_values)
+                        param_grid[param_name] = (min_depth, max_depth, "int")
                     else:
                         # Scale by n_samples
                         base_val = n_samples

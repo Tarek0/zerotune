@@ -8,6 +8,8 @@ information about datasets and their optimal hyperparameter configurations.
 
 import os
 import time
+import numpy as np
+import pandas as pd
 from typing import Dict, List, Optional, Union, Any
 from pathlib import Path
 
@@ -171,10 +173,18 @@ def update_knowledge_base(
     if "results" not in knowledge_base:
         knowledge_base["results"] = []
     
+    # Convert max_depth to percentage representation for better generalization
+    processed_hyperparameters = best_hyperparameters.copy()
+    if 'max_depth' in processed_hyperparameters and processed_hyperparameters['max_depth'] is not None:
+        n_samples = meta_features.get('n_samples', 1000)
+        max_theoretical_depth = max(1, int(np.log2(n_samples) * 2))  # Same as "unlimited" case
+        depth_percentage = min(1.0, processed_hyperparameters['max_depth'] / max_theoretical_depth)
+        processed_hyperparameters['max_depth'] = depth_percentage
+    
     # Create the result entry
     result_entry = {
         "dataset_name": dataset_name,
-        "best_hyperparameters": best_hyperparameters,
+        "best_hyperparameters": processed_hyperparameters,
         "best_score": best_score,
         "timestamp": time.time()
     }
@@ -199,6 +209,16 @@ def update_knowledge_base(
             # Filter to only the columns we need and that exist
             available_cols = [col for col in keep_cols if col in df_trials.columns]
             df_filtered = df_trials[available_cols].copy()
+            
+            # Convert max_depth to percentage representation in trials
+            if 'params_max_depth' in df_filtered.columns:
+                n_samples = meta_features.get('n_samples', 1000)
+                max_theoretical_depth = max(1, int(np.log2(n_samples) * 2))
+                
+                # Convert absolute depth values to percentages
+                df_filtered['params_max_depth'] = df_filtered['params_max_depth'].apply(
+                    lambda x: min(1.0, x / max_theoretical_depth) if pd.notna(x) and x is not None else x
+                )
             
             # Use pandas built-in method to convert to records
             # This handles type conversion automatically
