@@ -8,11 +8,12 @@ CURRENT STATUS (completed):
 ✅ Evaluation on 10 unseen datasets with excellent results (avg AUC: 0.8754)
 ✅ Proper data leakage prevention (training vs evaluation datasets are separate)
 ✅ Consistent naming conventions for KB and models
+✅ Simplified single-seed HPO (faster, cleaner implementation)
 
 ARCHITECTURE:
 - zerotune/core/predictor_training.py: Training functionality  
 - zerotune/predictors.py: Predictor class for inference
-- models/xgboost_binary_classifier_xgb_kb_v1_test.joblib: Trained model
+- models/predictor_xgboost_xgb_kb_v1_test.joblib: Trained model
 - knowledge_base/kb_xgboost_xgb_kb_v1_test.json: Training data
 
 CURRENT PERFORMANCE:
@@ -30,8 +31,13 @@ CURRENT PERFORMANCE:
   * 40536 (SpeedDating): 0.8675
 - 100% success rate, 8/10 datasets achieved AUC > 0.8
 
+OPTIMIZATION APPROACH:
+- Single-seed HPO per dataset (simplified from previous multi-seed approach)
+- Top-3 trials per dataset used for predictor training
+- Faster execution while maintaining quality
+
 NEXT STEPS TO IMPROVE:
-1. Build full knowledge base: python xgb_experiment.py full      # 15 datasets, 20 iterations each
+1. Build full knowledge base: python xgb_experiment.py full      # 15 datasets, 10 iterations each
 2. Train full predictor:      python xgb_experiment.py train-full
 3. Evaluate full predictor:   python xgb_experiment.py eval-full
 4. Compare test vs full predictor performance
@@ -74,7 +80,7 @@ FULL_DATASET_COLLECTION = [
     31,    # credit-g (1,000 × 20, imbalance: 2.333)
     38,    # sick (3,772 × 29, imbalance: 15.329)
     44,    # spambase (4,601 × 57, imbalance: 1.538)
-    52,    # trains (10 × 32, imbalance: 1.000)
+    52,    # trains (10 × 32, imbalance: 1.000) - Fixed with stratified splitting
     151,   # electricity (45,312 × 8, imbalance: 1.355)
     179,   # adult (48,842 × 14, imbalance: 3.179)
     298,   # coil2000 (9,822 × 85, imbalance: 15.761)
@@ -187,7 +193,7 @@ def train_zero_shot_predictor(kb_path=None, mode="test"):
             task_type="binary",
             output_dir="models",
             exp_id=f"{EXPERIMENT_ID}_{mode}",
-            top_k_per_seed=3  # Keep top 3 trials per seed
+            top_k_trials=3  # Keep top 3 trials per dataset
         )
         
         print(f"\n{'='*60}")
@@ -387,6 +393,11 @@ def test_zero_shot_predictor(model_path=None, mode="test", test_dataset_ids=None
                             feature_vector[0, i] = (feature_vector[0, i] - min_val) / range_val
                         else:
                             feature_vector[0, i] = 0.0
+                
+                # Apply feature selection if available
+                if 'feature_selector' in model_data and model_data['feature_selector'] is not None:
+                    feature_selector = model_data['feature_selector']
+                    feature_vector = feature_selector.transform(feature_vector)
                 
                 # Make prediction
                 prediction = model_data['model'].predict(feature_vector)[0]

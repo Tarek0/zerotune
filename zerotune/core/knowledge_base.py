@@ -131,7 +131,8 @@ def update_knowledge_base(
     all_results: Optional[OptimizationResults] = None,
     dataset_id: Optional[int] = None,
     model_type: Optional[str] = None,
-    df_trials: Optional['pd.DataFrame'] = None
+    df_trials: Optional['pd.DataFrame'] = None,
+    verbose: bool = False
 ) -> KnowledgeBase:
     """
     Update knowledge base with results from a new dataset.
@@ -188,10 +189,10 @@ def update_knowledge_base(
         result_entry["all_results"] = all_results
     
     if df_trials is not None:
-        # Convert DataFrame to dict for JSON serialization, handling complex objects
+        # Convert DataFrame to dict for JSON serialization using pandas built-in method
         try:
             # Only keep essential columns for training
-            essential_cols = ['number', 'value', 'state', 'seed']
+            essential_cols = ['number', 'value', 'state']
             param_cols = [col for col in df_trials.columns if col.startswith('params_')]
             keep_cols = essential_cols + param_cols
             
@@ -199,26 +200,21 @@ def update_knowledge_base(
             available_cols = [col for col in keep_cols if col in df_trials.columns]
             df_filtered = df_trials[available_cols].copy()
             
-            # Convert to records, ensuring all values are JSON serializable
-            records = []
-            for _, row in df_filtered.iterrows():
-                record = {}
-                for col in available_cols:
-                    value = row[col]
-                    # Convert complex types to simple ones
-                    if hasattr(value, 'item'):  # numpy types
-                        value = value.item()
-                    elif not isinstance(value, (int, float, str, bool, type(None))):
-                        value = str(value)
-                    record[col] = value
-                records.append(record)
+            # Use pandas built-in method to convert to records
+            # This handles type conversion automatically
+            records = df_filtered.to_dict('records')
             
             result_entry["trials_dataframe"] = records
             result_entry["trials_columns"] = available_cols
+                
         except Exception as e:
             # If trials dataframe can't be serialized, skip it but log the issue
-            print(f"Warning: Could not serialize trials dataframe: {e}")
-            pass
+            print(f"ERROR: Could not serialize trials dataframe: {e}")
+            import traceback
+            traceback.print_exc()
+    else:
+        if verbose:
+            print("DEBUG: df_trials is None, not saving trials data")
     
     # Add the result
     knowledge_base["results"].append(result_entry)
