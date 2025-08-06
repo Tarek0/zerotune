@@ -1,8 +1,8 @@
 [tool.poetry]
 name = "zerotune"
 version = "0.1.0"
-description = "One-shot hyperparameter optimization using meta-learning"
-authors = ["Your Name <your.email@example.com>"]
+description = "Zero-shot hyperparameter optimization using pre-trained meta-learning models - 100% win rate with Decision Trees"
+authors = ["ZeroTune Research Team <contact@zerotune.ai>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]

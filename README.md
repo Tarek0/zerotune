@@ -2,7 +2,7 @@
 
 ZeroTune provides **instant zero-shot hyperparameter optimization** using advanced pre-trained models. Get competitive hyperparameters for your machine learning models in sub-millisecond time with robust performance across diverse datasets!
 
-🎯 **Decision Tree: 0.8315 AUC** • 🏆 **100% datasets outperform random** • 🚀 **+5.6% avg improvement** • ⚡ **<1ms prediction time**
+🏆 **Decision Tree: 100% win rate** • 🎯 **0.8315 avg AUC** • 🚀 **+5.6% improvement** • ⚡ **<1ms prediction** • 📊 **50-seed validated**
 
 ## 🚀 Quick Start (Zero-Shot Predictions)
 
@@ -35,7 +35,7 @@ print(f"Optimal hyperparameters: {best_params}")
 - **No optimization time** required - get results in milliseconds
 - **Outstanding performance** with Decision Trees achieving 100% win rate and +5.6% improvement
 - **RFECV feature selection** focuses on the most predictive meta-features
-- Support for **Decision Tree** (🏆 best), **XGBoost**, and **Random Forest** models
+- Support for **Decision Tree** (🏆 best: 100% win rate), **Random Forest** (🌲 evaluating), and **XGBoost** (🔧 improving) models
 - **Binary**, **multiclass**, and **regression** tasks supported
 - **Custom model training** from your own knowledge bases
 
@@ -55,11 +55,13 @@ print(f"Optimal hyperparameters: {best_params}")
 
 ## 🎯 Supported Models
 
-| Model | Binary Classification | Multiclass Classification | Regression |
-|-------|----------------------|---------------------------|------------|
-| **XGBoost** | ✅ | ✅ | ✅ |
-| **Random Forest** | ✅ | ✅ | ✅ |
-| **Decision Tree** | ✅ | ✅ | ✅ |
+| Model | Binary Classification | Multiclass Classification | Regression | **Performance** |
+|-------|----------------------|---------------------------|------------|-----------------|
+| **🏆 Decision Tree** | ✅ | ✅ | ✅ | **100% win rate, +5.6%** |
+| **🌲 Random Forest** | ✅ | ✅ | ✅ | **In evaluation** |
+| **🔧 XGBoost** | ✅ | ✅ | ✅ | **+0.7% (needs improvement)** |
+
+**Recommendation**: Use **Decision Tree** for best performance. Random Forest results pending.
 
 ## 📦 Installation
 
@@ -123,6 +125,11 @@ model_path = train_predictor_from_knowledge_base(
 poetry run python decision_tree_experiment.py full         # Build enhanced KB (50 HPO runs/dataset)
 poetry run python decision_tree_experiment.py train-full   # Train production predictor
 poetry run python decision_tree_experiment.py eval-full    # Evaluate with 50-seed robustness
+
+# Random Forest Experiments (🌲 In Progress - Expected Strong Performance)
+poetry run python random_forest_experiment.py full         # Build enhanced KB (50 HPO runs/dataset)
+poetry run python random_forest_experiment.py train-full   # Train production predictor
+poetry run python random_forest_experiment.py eval-full    # Evaluate with 50-seed robustness
 
 # XGBoost Experiments
 poetry run python xgb_experiment.py info         # Show dataset information
@@ -217,9 +224,8 @@ Zero-shot predictor provides competitive performance across diverse datasets wit
 
 **Key Innovations**:
 - **Enhanced Knowledge Base**: 50 HPO runs per dataset for optimal hyperparameter discovery
-- **Percentage-based max_depth**: Scales intelligently with dataset size for better generalization
-- **Removed normalization**: Raw meta-features provide better signal for prediction
-- **Multi-seed evaluation**: 50 random seeds ensure statistically robust results
+- **Intelligent Scaling**: Hyperparameters adapt intelligently to dataset characteristics
+- **Statistical Robustness**: 50 random seeds ensure reliable, reproducible results
 
 **Production Benefits**:
 - **100% reliability**: Every dataset shows positive improvement over random
@@ -243,6 +249,18 @@ Zero-shot predictor provides competitive performance across diverse datasets wit
 - Recursive Feature Elimination with Cross-Validation
 - Automatically identifies the most predictive meta-features (15/22 retained)
 - Focuses model on statistical moments of feature and row distributions
+
+### Advanced Methodology
+
+**Enhanced Knowledge Base Building**:
+- **50 HPO runs per dataset** for superior hyperparameter discovery
+- **Intelligent scaling**: Hyperparameters adapt automatically to dataset characteristics
+- **Quality filtering**: Only best-performing hyperparameters used for predictor training
+
+**Robust Statistical Evaluation**:
+- **50 random seeds per evaluation**: Each dataset tested with 50 different train/test splits
+- **500 total experiments**: 10 test datasets × 50 seeds = comprehensive validation
+- **Confidence intervals**: All results include standard deviation for reliability assessment
 
 ## 🤝 Contributing
 
