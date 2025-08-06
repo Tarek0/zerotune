@@ -13,9 +13,7 @@ import pandas as pd
 import optuna
 from optuna.trial import Trial
 from sklearn.base import BaseEstimator
-from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split, cross_val_score, StratifiedKFold, StratifiedShuffleSplit
-from sklearn.neighbors import NearestNeighbors
 from sklearn.metrics import accuracy_score, mean_squared_error, f1_score, r2_score, roc_auc_score
 
 # Type aliases
@@ -404,110 +402,4 @@ def optimize_hyperparameters(
             print(f"  {param}: {value}")
     
     return best_params, best_score, all_results, df_trials
-
-
-def find_similar_datasets(
-    target_meta_features: Dict[str, float],
-    knowledge_base: Dict[str, Any],
-    n_neighbors: int = 3
-) -> List[int]:
-    """
-    Find similar datasets in the knowledge base based on meta-features.
-    
-    Args:
-        target_meta_features: Dictionary of meta-features for the target dataset
-        knowledge_base: Dictionary containing meta-features of known datasets
-        n_neighbors: Number of similar datasets to return
-        
-    Returns:
-        List of indices of similar datasets in the knowledge base
-    """
-    if not knowledge_base.get('meta_features'):
-        return []
-        
-    # Extract meta-features from knowledge base
-    kb_features = []
-    for entry in knowledge_base['meta_features']:
-        # Only use numeric meta-features that exist in both target and KB, excluding NaN values
-        features = {k: float(v) for k, v in entry.items() 
-                   if k in target_meta_features and isinstance(v, (int, float)) and not pd.isna(v)}
-        if features:  # Only add if we have matching features
-            kb_features.append(features)
-    
-    if not kb_features:
-        return []
-    
-    # Create feature matrix for knowledge base
-    feature_names = list(kb_features[0].keys())
-    kb_matrix = np.array([[entry[f] for f in feature_names] for entry in kb_features])
-    
-    # Create feature vector for target dataset (filter out NaN values)
-    target_features_filtered = {k: v for k, v in target_meta_features.items() 
-                               if k in feature_names and not pd.isna(v)}
-    
-    # Only use features that are available in both target and KB without NaN
-    common_features = [f for f in feature_names if f in target_features_filtered]
-    
-    if not common_features:
-        return []  # No common valid features
-    
-    # Rebuild matrices with only common valid features
-    kb_matrix = np.array([[entry[f] for f in common_features] for entry in kb_features])
-    target_vector = np.array([target_features_filtered[f] for f in common_features])
-    
-    # Normalize features
-    scaler = StandardScaler()
-    kb_matrix_scaled = scaler.fit_transform(kb_matrix)
-    target_vector_scaled = scaler.transform(target_vector.reshape(1, -1))
-    
-    # Find nearest neighbors
-    nbrs = NearestNeighbors(n_neighbors=min(n_neighbors, len(kb_features)))
-    nbrs.fit(kb_matrix_scaled)
-    distances, indices = nbrs.kneighbors(target_vector_scaled)
-    
-    # Return list of indices as integers
-    return [int(idx) for idx in indices[0]]
-
-
-def retrieve_best_configurations(
-    similar_indices: List[int],
-    knowledge_base: Dict[str, Any],
-    model_type: str = 'default'
-) -> List[HyperParams]:
-    """
-    Retrieve best configurations from similar datasets.
-    
-    Args:
-        similar_indices: Indices of similar datasets
-        knowledge_base: Knowledge base with dataset results
-        model_type: Type of model to retrieve configurations for
-        
-    Returns:
-        List of best hyperparameter configurations from similar datasets
-    """
-    if not knowledge_base or 'results' not in knowledge_base:
-        return []
-    
-    best_configs = []
-    
-    # Filter by model type if specified
-    kb_results = knowledge_base['results']
-    if model_type != 'default':
-        kb_filtered = []
-        for result in kb_results:
-            if 'model_type' in result and result['model_type'] == model_type:
-                kb_filtered.append(result)
-        kb_results = kb_filtered
-    
-    # For each similar dataset
-    for idx in similar_indices:
-        if idx < len(kb_results):
-            # Get the result for this dataset
-            result = kb_results[idx]
-            
-            # Add best configuration to the list
-            if 'best_hyperparameters' in result:
-                best_configs.append(result['best_hyperparameters'])
-    
-    return best_configs
  
