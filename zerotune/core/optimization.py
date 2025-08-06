@@ -13,9 +13,7 @@ import pandas as pd
 import optuna
 from optuna.trial import Trial
 from sklearn.base import BaseEstimator
-from sklearn.preprocessing import StandardScaler
-from sklearn.model_selection import train_test_split, cross_val_score, StratifiedKFold
-from sklearn.neighbors import NearestNeighbors
+from sklearn.model_selection import train_test_split, cross_val_score, StratifiedKFold, StratifiedShuffleSplit
 from sklearn.metrics import accuracy_score, mean_squared_error, f1_score, r2_score, roc_auc_score
 
 # Type aliases
@@ -270,11 +268,10 @@ def optimize_hyperparameters(
     random_state: Optional[int] = 42,
     verbose: bool = True,
     warm_start_configs: Optional[List[HyperParams]] = None,
-    dataset_meta_params: Optional[Dict[str, Any]] = None,
-    n_seeds: int = 10
+    dataset_meta_params: Optional[Dict[str, Any]] = None
 ) -> Tuple[HyperParams, float, List[Dict[str, Any]], 'pd.DataFrame']:
     """
-    Optimize hyperparameters using Optuna with warm-starting capabilities and multiple seeded runs.
+    Optimize hyperparameters using Optuna with warm-starting capabilities.
     
     Args:
         model_class: Class of the ML model to use
@@ -282,118 +279,115 @@ def optimize_hyperparameters(
         X_train: Training features
         y_train: Training targets
         metric: Evaluation metric to use
-        n_iter: Number of optimization trials per seed
+        n_iter: Number of optimization trials
         test_size: Validation split ratio
-        random_state: Base random state for reproducibility
+        random_state: Random state for reproducibility
         verbose: Whether to print progress
         warm_start_configs: Optional list of hyperparameter configurations to warm-start from
         dataset_meta_params: Optional dictionary of dataset meta-parameters for relative parameter conversion
-        n_seeds: Number of different random seeds to run (default: 10)
         
     Returns:
         A tuple containing:
-            - best_params: Dictionary of best hyperparameters found across all seeds
-            - best_score: Best performance score achieved across all seeds
-            - all_results: List of all configurations and their scores from all seeds
-            - df_trials: DataFrame with all Optuna trials from all seeds including seed information
+            - best_params: Dictionary of best hyperparameters found
+            - best_score: Best performance score achieved
+            - all_results: List of all configurations and their scores
+            - df_trials: DataFrame with all Optuna trials
     """
-    # Split data for training and validation
-    X_train_split, X_val, y_train_split, y_val = train_test_split(
-        X_train, y_train, test_size=test_size, random_state=random_state
+    # Split data for training and validation using stratified splitting
+    # This ensures both classes are present in train and test sets
+    stratified_split = StratifiedShuffleSplit(
+        n_splits=1, 
+        test_size=test_size, 
+        random_state=random_state
     )
     
-    # Initialize containers for aggregating results across all seeds
-    all_studies = []
-    all_results = []
-    all_df_trials = []
+    train_idx, val_idx = next(stratified_split.split(X_train, y_train))
     
-    # Run optimization with multiple seeds
+    # Handle both pandas DataFrames/Series and numpy arrays
+    if hasattr(X_train, 'iloc'):
+        # Pandas DataFrame
+        X_train_split, X_val = X_train.iloc[train_idx], X_train.iloc[val_idx]
+    else:
+        # Numpy array
+        X_train_split, X_val = X_train[train_idx], X_train[val_idx]
+    
+    if hasattr(y_train, 'iloc'):
+        # Pandas Series
+        y_train_split, y_val = y_train.iloc[train_idx], y_train.iloc[val_idx]
+    else:
+        # Numpy array
+        y_train_split, y_val = y_train[train_idx], y_train[val_idx]
+    
     if verbose:
-        print(f"Running optimization with {n_seeds} different seeds, {n_iter} trials each")
-        print(f"Total trials: {n_seeds * n_iter}")
+        print(f"Running optimization with {n_iter} trials")
     
-    for seed in range(n_seeds):
-        current_seed = random_state + seed if random_state is not None else seed
-        
+    # Create Optuna study
+    study = optuna.create_study(
+        direction="maximize",
+        sampler=optuna.samplers.TPESampler(seed=random_state)
+    )
+    
+    # Add warm-start configurations if provided
+    if warm_start_configs:
         if verbose:
-            print(f"\n--- Seed {seed + 1}/{n_seeds} (seed={current_seed}) ---")
+            print(f"Warm-starting optimization with {len(warm_start_configs)} configurations")
         
-        # Create Optuna study with current seed
-        study = optuna.create_study(
-            direction="maximize",
-            sampler=optuna.samplers.TPESampler(seed=current_seed)
+        # Convert warm-start configurations to match parameter grid
+        converted_configs = []
+        for config in warm_start_configs:
+            if dataset_meta_params is not None:
+                converted_config = _convert_relative_to_absolute_params(
+                    config, param_grid, dataset_meta_params
+                )
+            else:
+                converted_config = _convert_relative_to_absolute_params(
+                    config, param_grid, {}
+                )
+            converted_configs.append(converted_config)
+        
+        # Enqueue converted configurations
+        for config in converted_configs:
+            study.enqueue_trial(config)
+    
+    # Create objective function with warm-start flag tracking
+    warm_start_count = len(warm_start_configs) if warm_start_configs else 0
+    
+    def objective(trial: Trial) -> float:
+        is_warm_start = trial.number < warm_start_count
+        return _optuna_objective(
+            trial,
+            model_class,
+            param_grid,
+            X_train_split,
+            X_val,
+            y_train_split,
+            y_val,
+            metric,
+            dataset_meta_params,
+            is_warm_start
         )
-        
-        # Add warm-start configurations if provided (only for first seed to avoid bias)
-        if warm_start_configs and seed == 0:
-            if verbose:
-                print(f"Warm-starting optimization with {len(warm_start_configs)} configurations")
-            
-            # Convert warm-start configurations to match parameter grid
-            converted_configs = []
-            for config in warm_start_configs:
-                if dataset_meta_params is not None:
-                    converted_config = _convert_relative_to_absolute_params(
-                        config, param_grid, dataset_meta_params
-                    )
-                else:
-                    converted_config = _convert_relative_to_absolute_params(
-                        config, param_grid, {}
-                    )
-                converted_configs.append(converted_config)
-            
-            # Enqueue converted configurations
-            for config in converted_configs:
-                study.enqueue_trial(config)
-        
-        # Create objective function with warm-start flag tracking
-        warm_start_count = len(warm_start_configs) if warm_start_configs and seed == 0 else 0
-        
-        def objective(trial: Trial) -> float:
-            is_warm_start = trial.number < warm_start_count
-            return _optuna_objective(
-                trial,
-                model_class,
-                param_grid,
-                X_train_split,
-                X_val,
-                y_train_split,
-                y_val,
-                metric,
-                dataset_meta_params,
-                is_warm_start
-            )
-        
-        # Run optimization for this seed
-        study.optimize(objective, n_trials=n_iter, show_progress_bar=verbose)
-        
-        # Store this study
-        all_studies.append(study)
-        
-        # Collect results from this seed
-        for trial in study.trials:
-            if trial.state == optuna.trial.TrialState.COMPLETE:
-                result = {
-                    "hyperparameters": trial.params,
-                    "score": trial.value,
-                    "state": trial.state.name,
-                    "seed": current_seed,
-                    "is_warm_start": trial.number < warm_start_count
-                }
-                all_results.append(result)
-        
-        # Get trials dataframe with seed information
-        df_trials_seed = study.trials_dataframe()
-        df_trials_seed['seed'] = current_seed
-        all_df_trials.append(df_trials_seed)
-        
-        if verbose:
-            print(f"Seed {seed + 1} best score: {study.best_value:.4f}")
     
-    # Find overall best results across all seeds
-    best_study = max(all_studies, key=lambda s: s.best_value)
-    best_params = best_study.best_params
-    best_score = best_study.best_value
+    # Run optimization
+    study.optimize(objective, n_trials=n_iter, show_progress_bar=verbose)
+    
+    # Collect results
+    all_results = []
+    for trial in study.trials:
+        if trial.state == optuna.trial.TrialState.COMPLETE:
+            result = {
+                "hyperparameters": trial.params,
+                "score": trial.value,
+                "state": trial.state.name,
+                "is_warm_start": trial.number < warm_start_count
+            }
+            all_results.append(result)
+    
+    # Get trials dataframe
+    df_trials = study.trials_dataframe()
+    
+    # Get best results
+    best_params = study.best_params
+    best_score = study.best_value
     
     # Convert relative parameters to absolute if needed
     if dataset_meta_params is not None:
@@ -401,128 +395,11 @@ def optimize_hyperparameters(
             best_params, param_grid, dataset_meta_params
         )
     
-    # Combine all trials dataframes
-    import pandas as pd
-    df_trials = pd.concat(all_df_trials, ignore_index=True)
-    
     if verbose:
-        print(f"\n=== MULTI-SEED OPTIMIZATION SUMMARY ===")
-        print(f"Total trials across {n_seeds} seeds: {len(all_results)}")
-        print(f"Overall best score: {best_score:.4f}")
-        print("Overall best hyperparameters:")
+        print(f"Best score: {best_score:.4f}")
+        print("Best hyperparameters:")
         for param, value in best_params.items():
             print(f"  {param}: {value}")
-        
-        # Show performance across seeds
-        seed_scores = [study.best_value for study in all_studies]
-        print(f"Best scores per seed: {[f'{score:.4f}' for score in seed_scores]}")
-        print(f"Mean ± Std: {np.mean(seed_scores):.4f} ± {np.std(seed_scores):.4f}")
     
     return best_params, best_score, all_results, df_trials
-
-
-def find_similar_datasets(
-    target_meta_features: Dict[str, float],
-    knowledge_base: Dict[str, Any],
-    n_neighbors: int = 3
-) -> List[int]:
-    """
-    Find similar datasets in the knowledge base based on meta-features.
-    
-    Args:
-        target_meta_features: Dictionary of meta-features for the target dataset
-        knowledge_base: Dictionary containing meta-features of known datasets
-        n_neighbors: Number of similar datasets to return
-        
-    Returns:
-        List of indices of similar datasets in the knowledge base
-    """
-    if not knowledge_base.get('meta_features'):
-        return []
-        
-    # Extract meta-features from knowledge base
-    kb_features = []
-    for entry in knowledge_base['meta_features']:
-        # Only use numeric meta-features that exist in both target and KB, excluding NaN values
-        features = {k: float(v) for k, v in entry.items() 
-                   if k in target_meta_features and isinstance(v, (int, float)) and not pd.isna(v)}
-        if features:  # Only add if we have matching features
-            kb_features.append(features)
-    
-    if not kb_features:
-        return []
-    
-    # Create feature matrix for knowledge base
-    feature_names = list(kb_features[0].keys())
-    kb_matrix = np.array([[entry[f] for f in feature_names] for entry in kb_features])
-    
-    # Create feature vector for target dataset (filter out NaN values)
-    target_features_filtered = {k: v for k, v in target_meta_features.items() 
-                               if k in feature_names and not pd.isna(v)}
-    
-    # Only use features that are available in both target and KB without NaN
-    common_features = [f for f in feature_names if f in target_features_filtered]
-    
-    if not common_features:
-        return []  # No common valid features
-    
-    # Rebuild matrices with only common valid features
-    kb_matrix = np.array([[entry[f] for f in common_features] for entry in kb_features])
-    target_vector = np.array([target_features_filtered[f] for f in common_features])
-    
-    # Normalize features
-    scaler = StandardScaler()
-    kb_matrix_scaled = scaler.fit_transform(kb_matrix)
-    target_vector_scaled = scaler.transform(target_vector.reshape(1, -1))
-    
-    # Find nearest neighbors
-    nbrs = NearestNeighbors(n_neighbors=min(n_neighbors, len(kb_features)))
-    nbrs.fit(kb_matrix_scaled)
-    distances, indices = nbrs.kneighbors(target_vector_scaled)
-    
-    # Return list of indices as integers
-    return [int(idx) for idx in indices[0]]
-
-
-def retrieve_best_configurations(
-    similar_indices: List[int],
-    knowledge_base: Dict[str, Any],
-    model_type: str = 'default'
-) -> List[HyperParams]:
-    """
-    Retrieve best configurations from similar datasets.
-    
-    Args:
-        similar_indices: Indices of similar datasets
-        knowledge_base: Knowledge base with dataset results
-        model_type: Type of model to retrieve configurations for
-        
-    Returns:
-        List of best hyperparameter configurations from similar datasets
-    """
-    if not knowledge_base or 'results' not in knowledge_base:
-        return []
-    
-    best_configs = []
-    
-    # Filter by model type if specified
-    kb_results = knowledge_base['results']
-    if model_type != 'default':
-        kb_filtered = []
-        for result in kb_results:
-            if 'model_type' in result and result['model_type'] == model_type:
-                kb_filtered.append(result)
-        kb_results = kb_filtered
-    
-    # For each similar dataset
-    for idx in similar_indices:
-        if idx < len(kb_results):
-            # Get the result for this dataset
-            result = kb_results[idx]
-            
-            # Add best configuration to the list
-            if 'best_hyperparameters' in result:
-                best_configs.append(result['best_hyperparameters'])
-    
-    return best_configs
  

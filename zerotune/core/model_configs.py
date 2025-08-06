@@ -45,10 +45,10 @@ class ModelConfigs:
             "model": DecisionTreeClassifier(random_state=42),
             'metric': 'roc_auc',
             'param_config': {
-                'max_depth': {'percentage_splits': [0.25, 0.50, 0.70, 0.8, 0.9, 0.999], 'param_type': "int", 'dependency': 'n_samples'},
-                'min_samples_split': {'percentage_splits': [0.005, 0.01, 0.02, 0.05, 0.10], 'param_type': "float"},
-                'min_samples_leaf': {'percentage_splits': [0.005, 0.01, 0.02, 0.05, 0.10], 'param_type': "float"},
-                'max_features': {'percentage_splits': [0.50, 0.70, 0.8, 0.9, 0.99], 'param_type': "float"}
+                'max_depth': {'percentage_splits': [0.25, 0.50, 0.70, 0.8, 0.9, 0.999], 'param_type': "float", 'dependency': 'n_samples'},
+                'min_samples_split': {'min_value': 0.01, 'max_value': 0.5, 'param_type': "float"},  # 1% to 50% of samples
+                'min_samples_leaf': {'min_value': 0.005, 'max_value': 0.2, 'param_type': "float"},  # 0.5% to 20% of samples
+                'max_features': {'min_value': 0.1, 'max_value': 1.0, 'param_type': "float"}  # 10% to 100% of features
             }
         }
     
@@ -73,8 +73,8 @@ class ModelConfigs:
             "model": RandomForestClassifier(random_state=42),
             'metric': 'roc_auc',
             'param_config': {
-                'n_estimators': {'percentage_splits': [0.1, 0.2, 0.3, 0.4, 0.5], 'param_type': "int", 'dependency': 'n_features', 'multiplier': 100},
-                'max_depth': {'percentage_splits': [0.25, 0.50, 0.70, 0.8, 0.9, 0.999], 'param_type': "int", 'dependency': 'n_samples'},
+                'n_estimators': {'min_value': 10, 'max_value': 250, 'param_type': "int"},
+                'max_depth': {'percentage_splits': [0.1, 0.2, 0.3, 0.4, 0.5], 'param_type': "int", 'dependency': 'n_samples'},
                 'min_samples_split': {'percentage_splits': [0.005, 0.01, 0.02, 0.05, 0.10], 'param_type': "float"},
                 'min_samples_leaf': {'percentage_splits': [0.005, 0.01, 0.02, 0.05, 0.10], 'param_type': "float"},
                 'max_features': {'percentage_splits': [0.50, 0.70, 0.8, 0.9, 0.99], 'param_type': "float"}
@@ -106,7 +106,7 @@ class ModelConfigs:
             ),
             'metric': 'roc_auc',
             'param_config': {
-                'n_estimators': [50, 100, 200, 500, 1000],
+                'n_estimators': {'min_value': 10, 'max_value': 250, 'param_type': "int"},
                 'max_depth': {'percentage_splits': [0.1, 0.2, 0.3, 0.4, 0.5], 'param_type': "int", 'dependency': 'n_samples'},
                 'learning_rate': {'percentage_splits': [0.01, 0.05, 0.1, 0.2, 0.3], 'param_type': "float"},
                 'subsample': {'percentage_splits': [0.5, 0.6, 0.7, 0.8, 0.9], 'param_type': "float"},

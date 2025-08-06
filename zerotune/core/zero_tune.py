@@ -160,8 +160,18 @@ class ZeroTune:
                 if param_info.get('dependency') == 'n_samples':
                     # Parameters that depend on dataset size
                     if param_name == 'max_depth':
-                        max_depth = max(1, int(np.log2(n_samples)))
-                        param_grid[param_name] = (1, max_depth, "int")
+                        # Convert percentage splits to actual depth values based on n_samples
+                        depth_values = []
+                        for split in splits:
+                            if split == 0.999:  # Special case for "unlimited" depth
+                                depth_val = max(1, int(np.log2(n_samples) * 2))  # Allow deeper trees for large datasets
+                            else:
+                                depth_val = max(1, int(np.log2(n_samples) * split))
+                            depth_values.append(depth_val)
+                        
+                        min_depth = min(depth_values)
+                        max_depth = max(depth_values)
+                        param_grid[param_name] = (min_depth, max_depth, "int")
                     else:
                         # Scale by n_samples
                         base_val = n_samples
@@ -203,6 +213,14 @@ class ZeroTune:
                         param_grid[param_name] = (min_val, max_val, "linear")
                     else:
                         param_grid[param_name] = (int(min_val), int(max_val), "int")
+            elif 'min_value' in param_info and 'max_value' in param_info:
+                # Direct min/max value specification (e.g., n_estimators: {min_value: 50, max_value: 1000})
+                min_val = param_info['min_value']
+                max_val = param_info['max_value']
+                if param_type == 'int':
+                    param_grid[param_name] = (min_val, max_val, "int")
+                else:
+                    param_grid[param_name] = (min_val, max_val, "linear")
             else:
                 # Fallback for old-style configurations
                 param_range = param_info.get('range', [0.01, 1.0])
@@ -269,7 +287,7 @@ class ZeroTune:
                 
                 # Run optimization to find best hyperparameters for this dataset
                 best_params, best_score = self._optimize_single_dataset(
-                    X, y, n_iter, random_state, verbose
+                    X, y, n_iter, random_state, verbose, dataset_id, dataset_name
                 )
                 
                 if verbose:
@@ -292,7 +310,9 @@ class ZeroTune:
         y: Union[np.ndarray, pd.Series],
         n_iter: int,
         random_state: int,
-        verbose: bool
+        verbose: bool,
+        dataset_id: Optional[int] = None,
+        dataset_name: Optional[str] = None
     ) -> Tuple[Dict[str, Any], float]:
         """
         Run hyperparameter optimization on a single dataset and update knowledge base.
@@ -368,12 +388,14 @@ class ZeroTune:
         if self.knowledge_base:
             self.knowledge_base = update_knowledge_base(
                 self.knowledge_base,
-                dataset_name="unknown",  # Could be improved by passing dataset name
+                dataset_name=dataset_name,
                 meta_features=meta_features,
                 best_hyperparameters=best_params,
                 best_score=final_score,
                 model_type=self.model_type,
-                df_trials=df_trials
+                dataset_id=dataset_id,
+                df_trials=df_trials,
+                verbose=verbose
             )
             # Save updated knowledge base
             save_knowledge_base(self.knowledge_base, self.kb_path)

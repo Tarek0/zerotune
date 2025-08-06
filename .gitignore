@@ -64,4 +64,7 @@ zerotune_kb/
 zerotune_performance_comparison.png
 output/
 knowledge_base/
-my_experiment/ 
+models/
+my_experiment/
+notes/
+benchmarks/

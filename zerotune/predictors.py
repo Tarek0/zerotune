@@ -64,13 +64,13 @@ class ZeroTunePredictor:
     def train_from_knowledge_base(
         cls,
         kb_path: str,
-        model_name: str,
+        model_name: str = "xgboost",
         task_type: str = "binary",
         output_dir: str = "models",
         exp_id: Optional[str] = None,
         test_size: float = 0.2,
         random_state: int = 42,
-        top_k_per_seed: int = 3
+        top_k_trials: int = 3
     ) -> 'ZeroTunePredictor':
         """
         Train a new zero-shot predictor from a knowledge base.
@@ -83,7 +83,7 @@ class ZeroTunePredictor:
             exp_id: Experiment ID for naming (extracted from kb_path if None)
             test_size: Fraction of data to use for testing
             random_state: Random seed for reproducibility
-            top_k_per_seed: Number of top trials to keep per dataset/seed combination
+            top_k_trials: Number of top trials to keep per dataset
             
         Returns:
             Trained ZeroTunePredictor instance
@@ -98,7 +98,7 @@ class ZeroTunePredictor:
             test_size=test_size,
             random_state=random_state,
             verbose=True,
-            top_k_per_seed=top_k_per_seed
+            top_k_trials=top_k_trials
         )
         
         # Load the trained model and create a ZeroTunePredictor instance
@@ -156,9 +156,12 @@ class ZeroTunePredictor:
                     max_val = norm_info.get('max', 1.0)
                     range_val = norm_info.get('range', 1.0)
                     
-                    # Normalize to [0, 1] range using min-max scaling
+                    # Normalize to [0, 1] range using min-max scaling with overflow protection
                     if range_val > 0:
-                        feature_vector[0, i] = (feature_vector[0, i] - min_val) / range_val
+                        normalized_val = (feature_vector[0, i] - min_val) / range_val
+                        # Clip to reasonable range to prevent overflow
+                        normalized_val = np.clip(normalized_val, -1000.0, 1000.0)
+                        feature_vector[0, i] = normalized_val
                     else:
                         feature_vector[0, i] = 0.0
         
