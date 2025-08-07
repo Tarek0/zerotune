@@ -420,8 +420,18 @@ def test_zero_shot_predictor(model_path=None, mode="test", test_dataset_ids=None
                         value = prediction[i]
                         
                         # Convert to appropriate type
-                        if clean_param_name in ['n_estimators', 'max_depth']:
+                        if clean_param_name == 'n_estimators':
                             value = max(1, int(round(value)))
+                        elif clean_param_name == 'max_depth':
+                            # Convert percentage prediction to actual depth based on dataset size
+                            n_samples = meta_features.get('n_samples', 1000)  # Default fallback
+                            max_theoretical_depth = max(1, int(np.log2(n_samples) * 2))
+                            
+                            # Convert predicted percentage to actual depth
+                            depth_percentage = min(1.0, max(0.1, float(value)))  # Clamp between 10% and 100%
+                            depth_val = max(1, int(max_theoretical_depth * depth_percentage))
+                            
+                            value = depth_val
                         elif clean_param_name in ['learning_rate', 'subsample', 'colsample_bytree']:
                             value = max(0.01, min(1.0, float(value)))
                         
@@ -632,13 +642,23 @@ def test_zero_shot_predictor(model_path=None, mode="test", test_dataset_ids=None
                     'error': result.get('error', None)
                 }
                 
-                # Add benchmark results
+                # Add zero-shot predicted hyperparameters for debugging
+                if 'predicted_params' in result:
+                    for param_name, param_value in result['predicted_params'].items():
+                        row[f'predicted_{param_name}'] = param_value
+                
+                # Add benchmark results with hyperparameters
                 for benchmark_type in benchmark_types:
                     if 'benchmarks' in result and benchmark_type in result['benchmarks']:
                         benchmark_data = result['benchmarks'][benchmark_type]
                         row[f'auc_{benchmark_type}'] = benchmark_data['score']
                         row[f'uplift_{benchmark_type}'] = benchmark_data['uplift']
                         row[f'uplift_{benchmark_type}_pct'] = (benchmark_data['uplift'] / benchmark_data['score'] * 100) if benchmark_data['score'] > 0 else 0
+                        
+                        # Add benchmark hyperparameters for debugging
+                        if 'params' in benchmark_data:
+                            for param_name, param_value in benchmark_data['params'].items():
+                                row[f'{benchmark_type}_{param_name}'] = param_value
                     else:
                         row[f'auc_{benchmark_type}'] = None
                         row[f'uplift_{benchmark_type}'] = None

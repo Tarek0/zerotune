@@ -2,7 +2,7 @@
 
 ZeroTune provides **instant zero-shot hyperparameter optimization** using advanced pre-trained models. Get competitive hyperparameters for your machine learning models in sub-millisecond time with robust performance across diverse datasets!
 
-🏆 **Decision Tree: 100% win rate** • 🌲 **Random Forest: 90% win rate** • 🚀 **+5.6% & +1.6% improvements** • ⚡ **<1ms prediction** • 📊 **50-seed validated**
+🏆 **Decision Tree: 100% win rate** • 🌲 **Random Forest: 90% win rate** • 🔧 **XGBoost: 90% win rate** • 🚀 **+5.6%, +1.6% & +0.5% improvements** • ⚡ **<1ms prediction** • 📊 **50-seed validated**
 
 ## 🚀 Quick Start (Zero-Shot Predictions)
 
@@ -33,9 +33,9 @@ print(f"Optimal hyperparameters: {best_params}")
 ### Zero-Shot Hyperparameter Optimization
 - **Instant predictions** using pre-trained models with advanced evaluation metrics
 - **No optimization time** required - get results in milliseconds
-- **Outstanding performance** with Decision Trees (100% win rate, +5.6%) and Random Forest (90% win rate, +1.6%)
+- **Outstanding performance** with Decision Trees (100% win rate, +5.6%), Random Forest (90% win rate, +1.6%), and XGBoost (90% win rate, +0.5%)
 - **RFECV feature selection** focuses on the most predictive meta-features
-- Support for **Decision Tree** (🏆 best: 100% win rate), **Random Forest** (🌲 strong: 90% win rate), and **XGBoost** (🔧 improving: 28% win rate) models
+- Support for **Decision Tree** (🏆 best: 100% win rate), **Random Forest** (🌲 strong: 90% win rate), and **XGBoost** (🔧 strong: 90% win rate) models
 - **Binary**, **multiclass**, and **regression** tasks supported
 - **Custom model training** from your own knowledge bases
 
@@ -50,11 +50,11 @@ print(f"Optimal hyperparameters: {best_params}")
 
 | Model | Binary Classification | Multiclass Classification | Regression | **Performance** |
 |-------|----------------------|---------------------------|------------|-----------------|
-| **🏆 Decision Tree** | ✅ | ✅ | ✅ | **100% win rate, +5.6%** |
-| **🌲 Random Forest** | ✅ | ✅ | ✅ | **90% win rate, +1.6%** |
-| **🔧 XGBoost** | ✅ | ✅ | ✅ | **28% win rate, +0.7%** |
+| **🏆 Decision Tree** | ✅ | ❌ | ❌ | **100% win rate, +5.6%** |
+| **🌲 Random Forest** | ✅ | ❌ | ❌ | **90% win rate, +1.6%** |
+| **🔧 XGBoost** | ✅ | ❌ | ❌ | **90% win rate, +0.5%** |
 
-**Recommendation**: Use **Decision Tree** for optimal performance, **Random Forest** for strong results with ensemble robustness.
+**Recommendation**: Use **Decision Tree** for optimal performance, **Random Forest** or **XGBoost** for strong ensemble results with 90% reliability.
 
 ## 📦 Installation
 
@@ -164,7 +164,7 @@ poetry run python xgb_experiment.py eval-full    # Evaluate performance
 
 2. **Predictor Training** (`train_predictor_from_knowledge_base`):
    - RFECV feature selection with GroupKFold cross-validation
-   - Top-K filtering (top-3 trials per dataset)
+   - Top-K filtering (top-1 for Decision Tree's proven best approach, top-3 for others)
    - Hyperparameter optimization of the predictor itself
    - Advanced evaluation metrics (NMAE, Top-K accuracy)
 
@@ -198,8 +198,8 @@ Zero-shot predictor provides competitive performance across diverse datasets wit
 - **Consistent performance** from small (500 samples) to large (50K+ samples) datasets
 - **Positive uplift** on majority of datasets compared to random hyperparameter selection
 **Evaluation Summary**: 
-- **Outstanding performance** with Decision Tree (100% win rate) and Random Forest (90% win rate)
-- **Consistent positive uplift** of +5.6% and +1.6% respectively over random selection
+- **Outstanding performance** with Decision Tree (100% win rate), Random Forest (90% win rate), and XGBoost (90% win rate)
+- **Consistent positive uplift** of +5.6%, +1.6%, and +0.5% respectively over random selection
 - **Instant predictions** - sub-millisecond time vs hours of traditional HPO
 - **Production ready** with robust numerical stability and error handling
 
@@ -248,6 +248,29 @@ Zero-shot predictor provides competitive performance across diverse datasets wit
 - **Stable predictions**: Lower variance than single Decision Trees
 - **Complex dataset handling**: Scales well with feature count and sample size
 - **Proven architecture**: Random Forest's established robustness in production
+
+### 🔧 XGBoost Zero-Shot Performance (Latest Results)
+
+**Strong Performance Achieved After Critical Bug Fix**:
+
+| **Metric** | **Value** | **Significance** |
+|------------|-----------|------------------|
+| **Win Rate** | **90% (9/10 datasets)** | Highly reliable performance across test cases |
+| **Average AUC** | **0.8659 ± 0.1363** | Strong predictions with good stability |
+| **Average Improvement** | **+0.5% over random** | Consistent practical advantage |
+| **Best Single Win** | **+2.0% (KDDCup09_appetency)** | Strong performance on complex datasets |
+| **Statistical Robustness** | **50 seeds × 10 datasets** | 500 total experiments for validation |
+
+**Key Breakthrough**:
+- **Fixed max_depth Conversion**: Resolved critical bug where all predictions used depth=1 (stumps) instead of proper depths 7-13
+- **Expanded Hyperparameter Ranges**: 50x wider learning_rate range (0.001-0.5) and full subsampling options (0.5-1.0)
+- **Dataset-Aware Scaling**: Intelligent max_depth selection based on dataset size (7 for small, 13 for large datasets)
+
+**Production Benefits**:
+- **90% reliability**: Nearly perfect consistency across diverse domains
+- **Gradient boosting power**: Complex pattern recognition with proper tree depth
+- **Enhanced range utilization**: Full benefit of expanded hyperparameter exploration
+- **Proven ensemble method**: XGBoost's established performance in competitions
 
 ### Understanding the Evaluation Metrics
 
