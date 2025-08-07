@@ -44,6 +44,7 @@ import warnings
 import argparse
 import random
 import math
+import joblib
 
 # Import required modules
 from zerotune import ZeroTune
@@ -51,7 +52,6 @@ from zerotune.core.predictor_training import train_predictor_from_knowledge_base
 from zerotune.core.data_loading import fetch_open_ml_data, prepare_data
 from zerotune.core.feature_extraction import calculate_dataset_meta_parameters
 from zerotune.core.utils import convert_to_dataframe
-from zerotune.predictors import ZeroTunePredictor
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import roc_auc_score
@@ -185,27 +185,16 @@ def train_predictor(mode="test"):
 def evaluate_hyperparameters(params, X_train, y_train, X_test, y_test):
     """Evaluate a set of hyperparameters and return AUC score."""
     try:
-        # Convert percentage-based max_depth to absolute if needed
-        if 'max_depth' in params and isinstance(params['max_depth'], float) and params['max_depth'] < 1.0:
-            n_samples = len(X_train)
-            max_theoretical = max(1, int(math.log2(n_samples) * 2))
-            params['max_depth'] = max(1, int(params['max_depth'] * max_theoretical))
-        
-        # Ensure max_depth is not None if it becomes 0
+        # Ensure n_estimators is integer
+        if 'n_estimators' in params:
+            params['n_estimators'] = int(params['n_estimators'])
+            
+        # max_depth should already be converted to int or None
         if 'max_depth' in params and params['max_depth'] == 0:
             params['max_depth'] = None
             
-        # Convert percentage-based parameters to absolute counts
-        n_samples = len(X_train)
-        for param in ['min_samples_split', 'min_samples_leaf']:
-            if param in params and isinstance(params[param], float) and params[param] < 1.0:
-                params[param] = max(2 if param == 'min_samples_split' else 1, 
-                                  int(params[param] * n_samples))
-        
-        # Convert max_features percentage to absolute if needed
-        if 'max_features' in params and isinstance(params['max_features'], float):
-            n_features = X_train.shape[1]
-            params['max_features'] = max(1, int(params['max_features'] * n_features))
+        # min_samples_split and min_samples_leaf should already be converted to absolute counts
+        # max_features should already be converted to absolute count
             
         # Create and train model
         rf = RandomForestClassifier(**params, random_state=42)
@@ -279,8 +268,8 @@ def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, 
         return None
     
     try:
-        # Load the predictor
-        predictor = ZeroTunePredictor.from_file(model_path)
+        # Load the trained model
+        model_data = joblib.load(model_path)
         print(f"✅ Loaded predictor: {model_path}")
     except Exception as e:
         print(f"❌ Error loading predictor: {e}")
@@ -304,18 +293,94 @@ def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, 
         print(f"\n🔍 Testing on dataset {dataset_id}")
         
         try:
-            from openml import datasets
+            # Fetch dataset using zerotune's data pipeline (same as Decision Tree)
+            data, target_name, dataset_name = fetch_open_ml_data(dataset_id)
+            X, y = prepare_data(data, target_name)
             
-            # Download dataset
-            dataset = datasets.get_dataset(dataset_id)
-            X, y, _, _ = dataset.get_data(target=dataset.default_target_attribute)
-            
-            print(f"Dataset name: {dataset.name}")
-            print(f"Dataset: {dataset.name}")
+            print(f"Dataset name: {dataset_name}")
+            print(f"Dataset: {dataset_name}")
             print(f"Shape: {X.shape}")
             
-            # Get zero-shot prediction
-            predicted_params = predictor.predict(X, y)
+            # Calculate meta-features  
+            X_df = convert_to_dataframe(X)
+            meta_features = calculate_dataset_meta_parameters(X_df, y)
+            
+            # Prepare features for prediction
+            feature_names = model_data['feature_names']
+            feature_vector = []
+            
+            for feature_name in feature_names:
+                if feature_name in meta_features:
+                    feature_vector.append(float(meta_features[feature_name]))
+                else:
+                    feature_vector.append(0.0)
+            
+            # Normalize features (but our model has empty normalization_params)
+            feature_vector = np.array(feature_vector, dtype=np.float64).reshape(1, -1)
+            norm_params = model_data['normalization_params']
+            
+            for i, feature_name in enumerate(feature_names):
+                if feature_name in norm_params:
+                    norm_info = norm_params[feature_name]
+                    min_val = norm_info['min']
+                    range_val = norm_info['range']
+                    
+                    if range_val > 0:
+                        feature_vector[0, i] = (feature_vector[0, i] - min_val) / range_val
+                    else:
+                        feature_vector[0, i] = 0.0
+            
+            # Apply feature selection if available
+            if 'feature_selector' in model_data and model_data['feature_selector'] is not None:
+                feature_selector = model_data['feature_selector']
+                feature_vector = feature_selector.transform(feature_vector)
+            
+            # Make prediction
+            prediction = model_data['model'].predict(feature_vector)[0]
+            
+            # Convert to hyperparameters
+            param_names = model_data['param_names']
+            predicted_params = {}
+            
+            for i, param_name in enumerate(param_names):
+                clean_param_name = param_name.replace('params_', '')
+                
+                if i < len(prediction):
+                    value = prediction[i]
+                    
+                    # Convert to appropriate type for Random Forest
+                    if clean_param_name == 'n_estimators':
+                        # Must be integer, clamp to valid range
+                        value = max(10, min(250, int(round(float(value)))))
+                    elif clean_param_name == 'max_depth':
+                        # Convert percentage representation to actual depth based on n_samples
+                        n_samples = meta_features.get('n_samples', 1000)  # Default fallback
+                        max_theoretical_depth = max(1, int(np.log2(n_samples) * 2))
+                        
+                        # Convert predicted percentage to actual depth
+                        depth_percentage = min(1.0, max(0.1, float(value)))  # Clamp between 10% and 100%
+                        depth_val = max(1, int(max_theoretical_depth * depth_percentage))
+                        
+                        value = depth_val
+                    elif clean_param_name in ['min_samples_split', 'min_samples_leaf']:
+                        # Convert percentage to absolute counts
+                        n_samples = meta_features.get('n_samples', 1000)
+                        if clean_param_name == 'min_samples_split':
+                            # 1% to 20% of samples, minimum 2
+                            percentage = min(0.20, max(0.01, float(value)))
+                            value = max(2, int(percentage * n_samples))
+                        else:  # min_samples_leaf
+                            # 0.5% to 10% of samples, minimum 1
+                            percentage = min(0.10, max(0.005, float(value)))
+                            value = max(1, int(percentage * n_samples))
+                    elif clean_param_name == 'max_features':
+                        # Convert percentage to absolute count
+                        n_features = X.shape[1]
+                        percentage = min(1.0, max(0.1, float(value)))  # 10% to 100%
+                        value = max(1, int(percentage * n_features))
+                    
+                    predicted_params[clean_param_name] = value
+                
             print("Predicted hyperparameters:")
             for param, value in predicted_params.items():
                 print(f"  {param}: {value}")
@@ -362,7 +427,7 @@ def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, 
                 # Store results
                 results.append({
                     'dataset_id': dataset_id,
-                    'dataset_name': dataset.name,
+                    'dataset_name': dataset_name,
                     'auc_predicted': auc_predicted_mean,
                     'auc_predicted_std': auc_predicted_std,
                     'n_samples': X.shape[0],
@@ -404,7 +469,7 @@ def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, 
                     # Store results
                     results.append({
                         'dataset_id': dataset_id,
-                        'dataset_name': dataset.name,
+                        'dataset_name': dataset_name,
                         'auc_predicted': auc_predicted,
                         'n_samples': X.shape[0],
                         'n_features': X.shape[1],
@@ -417,7 +482,7 @@ def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, 
                     # Store results without benchmark
                     results.append({
                         'dataset_id': dataset_id,
-                        'dataset_name': dataset.name,
+                        'dataset_name': dataset_name,
                         'auc_predicted': auc_predicted,
                         'n_samples': X.shape[0],
                         'n_features': X.shape[1],

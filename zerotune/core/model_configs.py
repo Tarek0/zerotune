@@ -108,8 +108,8 @@ class ModelConfigs:
             'param_config': {
                 'n_estimators': {'min_value': 10, 'max_value': 250, 'param_type': "int"},
                 'max_depth': {'percentage_splits': [0.25, 0.50, 0.70, 0.8, 0.9, 0.999], 'param_type': "float", 'dependency': 'n_samples'},
-                'learning_rate': {'percentage_splits': [0.01, 0.05, 0.1, 0.2, 0.3], 'param_type': "float"},
-                'subsample': {'percentage_splits': [0.5, 0.6, 0.7, 0.8, 0.9], 'param_type': "float"},
-                'colsample_bytree': {'percentage_splits': [0.5, 0.6, 0.7, 0.8, 0.9], 'param_type': "float"}
+                'learning_rate': {'min_value': 0.001, 'max_value': 0.5, 'param_type': "float"},
+                'subsample': {'min_value': 0.5, 'max_value': 1.0, 'param_type': "float"},
+                'colsample_bytree': {'min_value': 0.5, 'max_value': 1.0, 'param_type': "float"}
             }
         } 
