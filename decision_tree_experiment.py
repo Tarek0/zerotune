@@ -51,6 +51,7 @@ from zerotune.core.predictor_training import train_predictor_from_knowledge_base
 from zerotune.core.data_loading import fetch_open_ml_data, prepare_data
 from zerotune.core.feature_extraction import calculate_dataset_meta_parameters
 from zerotune.core.utils import convert_to_dataframe
+from zerotune.core.model_configs import ModelConfigs
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import roc_auc_score, accuracy_score, classification_report
@@ -371,11 +372,30 @@ def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, 
                         if save_benchmark:
                             # Set random seed for reproducible random hyperparameters
                             random.seed(current_seed)
+                            
+                            # Generate random hyperparameters from ModelConfigs (ensures perfect consistency)
+                            config = ModelConfigs.get_decision_tree_config()
+                            param_config = config['param_config']
+                            
+                            # Calculate max_depth based on dataset size using ModelConfigs
+                            import math
+                            max_theoretical_depth = max(1, int(math.log2(X.shape[0]) * 2))
+                            max_depth_percentages = param_config['max_depth']['percentage_splits']
+                            max_depth_options = [max(1, int(p * max_theoretical_depth)) for p in max_depth_percentages]
+                            max_depth_options.append(None)  # Add unlimited depth option
+                            
+                            # Use continuous sampling from ModelConfigs ranges
+                            min_samples_split_config = param_config['min_samples_split']
+                            min_samples_leaf_config = param_config['min_samples_leaf']
+                            max_features_config = param_config['max_features']
+                            
                             random_params = {
-                                'max_depth': random.choice([None] + list(range(1, 21))),
-                                'min_samples_split': random.randint(2, 20),
-                                'min_samples_leaf': random.randint(1, 20),
-                                'max_features': random.choice(['sqrt', 'log2', None, random.uniform(0.1, 1.0)])
+                                'max_depth': random.choice(max_depth_options),
+                                'min_samples_split': random.randint(min_samples_split_config['min_value'], 
+                                                                  min_samples_split_config['max_value']),
+                                'min_samples_leaf': random.randint(min_samples_leaf_config['min_value'], 
+                                                                 min_samples_leaf_config['max_value']),
+                                'max_features': random.choice(max_features_config['options'])
                             }
                             
                             # Train with random hyperparameters
@@ -424,12 +444,29 @@ def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, 
                     if save_benchmark:
                         print(f"\n🔄 Running random benchmark...")
                         
-                        # Generate random hyperparameters
+                        # Generate random hyperparameters from ModelConfigs (ensures perfect consistency)
+                        config = ModelConfigs.get_decision_tree_config()
+                        param_config = config['param_config']
+                        
+                        # Calculate max_depth based on dataset size using ModelConfigs
+                        import math
+                        max_theoretical_depth = max(1, int(math.log2(X.shape[0]) * 2))
+                        max_depth_percentages = param_config['max_depth']['percentage_splits']
+                        max_depth_options = [max(1, int(p * max_theoretical_depth)) for p in max_depth_percentages]
+                        max_depth_options.append(None)  # Add unlimited depth option
+                        
+                        # Use continuous sampling from ModelConfigs ranges
+                        min_samples_split_config = param_config['min_samples_split']
+                        min_samples_leaf_config = param_config['min_samples_leaf']
+                        max_features_config = param_config['max_features']
+                        
                         random_params = {
-                            'max_depth': random.choice([None] + list(range(1, 21))),
-                            'min_samples_split': random.randint(2, 20),
-                            'min_samples_leaf': random.randint(1, 20),
-                            'max_features': random.choice(['sqrt', 'log2', None, random.uniform(0.1, 1.0)])
+                            'max_depth': random.choice(max_depth_options),
+                            'min_samples_split': random.randint(min_samples_split_config['min_value'], 
+                                                              min_samples_split_config['max_value']),
+                            'min_samples_leaf': random.randint(min_samples_leaf_config['min_value'], 
+                                                             min_samples_leaf_config['max_value']),
+                            'max_features': random.choice(max_features_config['options'])
                         }
                         
                         print("📊 Random hyperparameters:")
@@ -461,7 +498,7 @@ def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, 
                     else:
                         print(f"🚀 Uplift vs random: {uplift:+.4f} ({uplift_pct:+.1f}%)")
                 
-                # Store results
+                # Store results with hyperparameters for debugging
                 result = {
                     'dataset_id': dataset_id,
                     'dataset_name': dataset_name,
@@ -471,12 +508,20 @@ def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, 
                     'error': None
                 }
                 
+                # Add predicted hyperparameters for debugging
+                for param_name, param_value in predicted_params.items():
+                    result[f'predicted_{param_name}'] = param_value
+                
                 if save_benchmark:
                     result.update({
                         'auc_random': auc_random,
                         'uplift_random': uplift,
                         'uplift_random_pct': uplift_pct
                     })
+                    
+                    # Add random hyperparameters for debugging
+                    for param_name, param_value in random_params.items():
+                        result[f'random_{param_name}'] = param_value
                 
                 results.append(result)
                 
@@ -550,6 +595,9 @@ def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, 
         
         # Save results to CSV
         if save_benchmark:
+            # Ensure benchmarks directory exists
+            os.makedirs("benchmarks", exist_ok=True)
+            
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             csv_filename = f"benchmarks/benchmark_results_{EXPERIMENT_ID}_{mode}_{timestamp}.csv"
             

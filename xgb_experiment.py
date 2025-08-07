@@ -54,6 +54,7 @@ from zerotune.core.predictor_training import train_predictor_from_knowledge_base
 from zerotune.core.data_loading import fetch_open_ml_data, prepare_data
 from zerotune.core.feature_extraction import calculate_dataset_meta_parameters
 from zerotune.core.utils import convert_to_dataframe
+from zerotune.core.model_configs import ModelConfigs
 from xgboost import XGBClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import roc_auc_score, accuracy_score, classification_report
@@ -186,7 +187,7 @@ def train_zero_shot_predictor(kb_path=None, mode="test"):
             task_type="binary",
             output_dir="models",
             exp_id=f"{EXPERIMENT_ID}_{mode}",
-            top_k_trials=3  # Keep top 3 trials per dataset
+            top_k_trials=1  # Keep only best trial per dataset (Decision Tree's winning strategy)
         )
         
         print(f"\n{'='*60}")
@@ -217,17 +218,27 @@ def generate_random_hyperparameters(dataset_size=1000, random_state=42):
     random.seed(random_state)
     np.random.seed(random_state)
     
-    # Calculate max_depth range based on dataset size (same as KB)
+    # Get configuration from ModelConfigs to ensure perfect consistency
+    config = ModelConfigs.get_xgboost_config()
+    param_config = config['param_config']
+    
+    # Handle max_depth (percentage-based, same as KB)
     max_theoretical_depth = max(1, int(math.log2(dataset_size) * 2))
-    max_depth_percentages = [0.25, 0.50, 0.70, 0.8, 0.9, 0.999]
+    max_depth_percentages = param_config['max_depth']['percentage_splits']
     max_depth_options = [max(1, int(p * max_theoretical_depth)) for p in max_depth_percentages]
     
+    # Use continuous sampling from ModelConfigs ranges (ensures perfect consistency)
+    n_estimators_config = param_config['n_estimators']
+    learning_rate_config = param_config['learning_rate']
+    subsample_config = param_config['subsample']
+    colsample_bytree_config = param_config['colsample_bytree']
+    
     return {
-        'n_estimators': random.randint(10, 250),  # Match KB range
+        'n_estimators': random.randint(n_estimators_config['min_value'], n_estimators_config['max_value']),
         'max_depth': random.choice(max_depth_options),  # Percentage-based like KB
-        'learning_rate': round(random.uniform(0.001, 0.5), 6),  # Continuous sampling like KB
-        'subsample': round(random.uniform(0.5, 1.0), 6),  # Continuous sampling like KB  
-        'colsample_bytree': round(random.uniform(0.5, 1.0), 6)  # Continuous sampling like KB
+        'learning_rate': round(random.uniform(learning_rate_config['min_value'], learning_rate_config['max_value']), 6),
+        'subsample': round(random.uniform(subsample_config['min_value'], subsample_config['max_value']), 6),
+        'colsample_bytree': round(random.uniform(colsample_bytree_config['min_value'], colsample_bytree_config['max_value']), 6)
     }
 
 def run_benchmark_hpo(X_train, y_train, X_test, y_test, benchmark_type="random", n_trials=10, random_state=42):
@@ -625,8 +636,11 @@ def test_zero_shot_predictor(model_path=None, mode="test", test_dataset_ids=None
         
         # Save results to CSV if requested
         if save_csv and results:
+            # Ensure benchmarks directory exists
+            os.makedirs("benchmarks", exist_ok=True)
+            
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            csv_filename = f"benchmark_results_{EXPERIMENT_ID}_{mode}_{timestamp}.csv"
+            csv_filename = f"benchmarks/benchmark_results_{EXPERIMENT_ID}_{mode}_{timestamp}.csv"
             
             print(f"\n💾 Saving results to CSV: {csv_filename}")
             
