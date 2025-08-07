@@ -71,5 +71,5 @@ benchmarks/
 knowledge_base/kb_*_test.json           # Exclude test knowledge bases
 models/predictor_*_test.joblib           # Exclude test predictors  
 models/xgboost_binary_classifier_*.joblib # Exclude legacy models
-benchmark_results_*.csv                  # Exclude benchmark results
+benchmark_results_*.csv                  # Exclude benchmark results from root (should be in benchmarks/)
 zerotune/models/                         # Exclude old traditional classifier models
