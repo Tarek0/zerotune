@@ -570,8 +570,11 @@ def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, 
     
     # Save results
     if save_benchmark:
+        # Ensure benchmarks directory exists
+        os.makedirs("benchmarks", exist_ok=True)
+        
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        csv_filename = f"benchmark_results_rf_kb_v1_{mode}_{timestamp}.csv"
+        csv_filename = f"benchmarks/benchmark_results_rf_kb_v1_{mode}_{timestamp}.csv"
         
         df = pd.DataFrame(results)
         df.to_csv(csv_filename, index=False)

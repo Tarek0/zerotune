@@ -636,8 +636,11 @@ def test_zero_shot_predictor(model_path=None, mode="test", test_dataset_ids=None
         
         # Save results to CSV if requested
         if save_csv and results:
+            # Ensure benchmarks directory exists
+            os.makedirs("benchmarks", exist_ok=True)
+            
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            csv_filename = f"benchmark_results_{EXPERIMENT_ID}_{mode}_{timestamp}.csv"
+            csv_filename = f"benchmarks/benchmark_results_{EXPERIMENT_ID}_{mode}_{timestamp}.csv"
             
             print(f"\n💾 Saving results to CSV: {csv_filename}")
             
