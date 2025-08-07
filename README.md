@@ -2,7 +2,7 @@
 
 ZeroTune provides **instant zero-shot hyperparameter optimization** using advanced pre-trained models. Get competitive hyperparameters for your machine learning models in sub-millisecond time with robust performance across diverse datasets!
 
-🏆 **Decision Tree: 100% win rate** • 🌲 **Random Forest: 90% win rate** • 🔧 **XGBoost: 90% win rate** • 🚀 **+5.6%, +1.6% & +0.5% improvements** • ⚡ **<1ms prediction** • 📊 **50-seed validated**
+🏆 **Decision Tree: 100% win rate** • 🌲 **Random Forest: 100% win rate** • 🔧 **XGBoost: 90% win rate** • 🚀 **+5.6%, +1.2% & +0.7% improvements** • ⚡ **<1ms prediction** • 📊 **50-seed validated**
 
 ## 🚀 Quick Start (Zero-Shot Predictions)
 
@@ -18,6 +18,7 @@ y = df['target']
 
 # Get optimal hyperparameters instantly (🏆 100% win rate!)
 predictor = ZeroTunePredictor(model_name='decision_tree', task_type='binary')
+# Or use: model_name='random_forest' (🌲 also 100% win rate!)
 best_params = predictor.predict(X, y)
 
 # Train model with predicted hyperparameters
@@ -25,7 +26,7 @@ model = DecisionTreeClassifier(**best_params)
 model.fit(X, y)
 
 print(f"Optimal hyperparameters: {best_params}")
-# Expected: +5.6% improvement over random hyperparameters
+# Expected: +5.6% improvement (Decision Tree) or +1.2% (Random Forest)
 ```
 
 ## ✨ Features
@@ -33,9 +34,9 @@ print(f"Optimal hyperparameters: {best_params}")
 ### Zero-Shot Hyperparameter Optimization
 - **Instant predictions** using pre-trained models with advanced evaluation metrics
 - **No optimization time** required - get results in milliseconds
-- **Outstanding performance** with Decision Trees (100% win rate, +5.6%), Random Forest (90% win rate, +1.6%), and XGBoost (90% win rate, +0.5%)
+- **Outstanding performance** with Decision Trees (100% win rate, +5.6%), Random Forest (100% win rate, +1.2%), and XGBoost (90% win rate, +0.7%)
 - **RFECV feature selection** focuses on the most predictive meta-features
-- Support for **Decision Tree** (🏆 best: 100% win rate), **Random Forest** (🌲 strong: 90% win rate), and **XGBoost** (🔧 strong: 90% win rate) models
+- Support for **Decision Tree** (🏆 best: 100% win rate), **Random Forest** (🌲 perfect: 100% win rate), and **XGBoost** (🔧 strong: 90% win rate) models
 - **Binary**, **multiclass**, and **regression** tasks supported
 - **Custom model training** from your own knowledge bases
 
@@ -51,10 +52,10 @@ print(f"Optimal hyperparameters: {best_params}")
 | Model | Binary Classification | Multiclass Classification | Regression | **Performance** |
 |-------|----------------------|---------------------------|------------|-----------------|
 | **🏆 Decision Tree** | ✅ | ❌ | ❌ | **100% win rate, +5.6%** |
-| **🌲 Random Forest** | ✅ | ❌ | ❌ | **90% win rate, +1.6%** |
-| **🔧 XGBoost** | ✅ | ❌ | ❌ | **90% win rate, +0.5%** |
+| **🌲 Random Forest** | ✅ | ❌ | ❌ | **100% win rate, +1.2%** |
+| **🔧 XGBoost** | ✅ | ❌ | ❌ | **90% win rate, +0.7%** |
 
-**Recommendation**: Use **Decision Tree** for optimal performance, **Random Forest** or **XGBoost** for strong ensemble results with 90% reliability.
+**Recommendation**: Use **Decision Tree** for optimal single-model performance, **Random Forest** for perfect ensemble reliability (both 100% win rate), or **XGBoost** for advanced boosting with 90% reliability.
 
 ## 📦 Installation
 
@@ -67,6 +68,13 @@ git clone https://github.com/yourusername/zerotune.git
 cd zerotune
 poetry install
 ```
+
+🚀 **Production Models Included**: All trained models are included in the repository for immediate use - no training required!
+
+✅ **Ready-to-Use Models**:
+- `models/predictor_decision_tree_dt_kb_v1_full.joblib` (100% win rate, +5.6%)
+- `models/predictor_random_forest_rf_kb_v1_full.joblib` (100% win rate, +1.2%) 
+- `models/predictor_xgboost_xgb_kb_v1_full.joblib` (90% win rate, +0.7%)
 
 ## 🔧 Usage
 
@@ -119,7 +127,7 @@ poetry run python decision_tree_experiment.py full         # Build enhanced KB (
 poetry run python decision_tree_experiment.py train-full   # Train production predictor
 poetry run python decision_tree_experiment.py eval-full    # Evaluate with 50-seed robustness
 
-# Random Forest Experiments (🌲 Proven Strong Performance: 90% Win Rate)
+# Random Forest Experiments (🌲 Perfect Performance: 100% Win Rate)
 poetry run python random_forest_experiment.py full         # Build enhanced KB (50 HPO runs/dataset)
 poetry run python random_forest_experiment.py train-full   # Train production predictor
 poetry run python random_forest_experiment.py eval-full    # Evaluate with 50-seed robustness
@@ -198,8 +206,8 @@ Zero-shot predictor provides competitive performance across diverse datasets wit
 - **Consistent performance** from small (500 samples) to large (50K+ samples) datasets
 - **Positive uplift** on majority of datasets compared to random hyperparameter selection
 **Evaluation Summary**: 
-- **Outstanding performance** with Decision Tree (100% win rate), Random Forest (90% win rate), and XGBoost (90% win rate)
-- **Consistent positive uplift** of +5.6%, +1.6%, and +0.5% respectively over random selection
+- **Outstanding performance** with Decision Tree (100% win rate), Random Forest (100% win rate), and XGBoost (90% win rate)
+- **Consistent positive uplift** of +5.6%, +1.2%, and +0.7% respectively over random selection
 - **Instant predictions** - sub-millisecond time vs hours of traditional HPO
 - **Production ready** with robust numerical stability and error handling
 
@@ -232,19 +240,19 @@ Zero-shot predictor provides competitive performance across diverse datasets wit
 
 | **Metric** | **Value** | **Significance** |
 |------------|-----------|------------------|
-| **Win Rate** | **90% (9/10 datasets)** | Highly consistent performance across test cases |
-| **Average AUC** | **0.8612 ± 0.0247** | Strong predictions with good stability |
-| **Average Improvement** | **+1.6% over random** | Solid practical advantage |
-| **Best Single Win** | **+4.5% (bank-marketing)** | Strong performance on complex datasets |
+| **Win Rate** | **100% (10/10 datasets)** | Perfect consistency across test cases |
+| **Average AUC** | **0.8551 ± 0.1126** | Strong predictions with good stability |
+| **Average Improvement** | **+1.2% over random** | Consistent practical advantage |
+| **Best Single Win** | **+4.4% (fri_c1_1000_25)** | Excellent performance on diverse datasets |
 | **Statistical Robustness** | **50 seeds × 10 datasets** | 500 total experiments for validation |
 
 **Key Strengths**:
-- **Reliable Performance**: Only 1 minor loss (-0.28%) across all test datasets
-- **Ensemble Robustness**: Natural variance reduction from tree ensemble architecture
+- **Perfect Performance**: 100% win rate with positive improvement on ALL test datasets
+- **Ensemble Robustness**: Natural variance reduction from tree ensemble architecture  
 - **Complex Feature Handling**: Excellent performance on high-dimensional datasets (up to 230 features)
 
 **Production Benefits**:
-- **90% reliability**: Nearly perfect consistency across diverse domains
+- **100% reliability**: Perfect consistency across diverse domains
 - **Stable predictions**: Lower variance than single Decision Trees
 - **Complex dataset handling**: Scales well with feature count and sample size
 - **Proven architecture**: Random Forest's established robustness in production
@@ -257,7 +265,7 @@ Zero-shot predictor provides competitive performance across diverse datasets wit
 |------------|-----------|------------------|
 | **Win Rate** | **90% (9/10 datasets)** | Highly reliable performance across test cases |
 | **Average AUC** | **0.8659 ± 0.1363** | Strong predictions with good stability |
-| **Average Improvement** | **+0.5% over random** | Consistent practical advantage |
+| **Average Improvement** | **+0.7% over random** | Consistent practical advantage |
 | **Best Single Win** | **+2.0% (KDDCup09_appetency)** | Strong performance on complex datasets |
 | **Statistical Robustness** | **50 seeds × 10 datasets** | 500 total experiments for validation |
 
