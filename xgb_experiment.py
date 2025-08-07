@@ -225,9 +225,9 @@ def generate_random_hyperparameters(dataset_size=1000, random_state=42):
     return {
         'n_estimators': random.randint(10, 250),  # Match KB range
         'max_depth': random.choice(max_depth_options),  # Percentage-based like KB
-        'learning_rate': random.choice([0.01, 0.05, 0.1, 0.2, 0.3]),  # Match KB discrete options
-        'subsample': random.choice([0.5, 0.6, 0.7, 0.8, 0.9]),  # Match KB discrete options
-        'colsample_bytree': random.choice([0.5, 0.6, 0.7, 0.8, 0.9])  # Match KB discrete options
+        'learning_rate': round(random.uniform(0.001, 0.5), 6),  # Continuous sampling like KB
+        'subsample': round(random.uniform(0.5, 1.0), 6),  # Continuous sampling like KB  
+        'colsample_bytree': round(random.uniform(0.5, 1.0), 6)  # Continuous sampling like KB
     }
 
 def run_benchmark_hpo(X_train, y_train, X_test, y_test, benchmark_type="random", n_trials=10, random_state=42):
