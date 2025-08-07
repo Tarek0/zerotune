@@ -52,6 +52,7 @@ from zerotune.core.predictor_training import train_predictor_from_knowledge_base
 from zerotune.core.data_loading import fetch_open_ml_data, prepare_data
 from zerotune.core.feature_extraction import calculate_dataset_meta_parameters
 from zerotune.core.utils import convert_to_dataframe
+from zerotune.core.model_configs import ModelConfigs
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import roc_auc_score
@@ -176,7 +177,7 @@ def train_predictor(mode="test"):
         test_size=0.2,
         random_state=42,
         verbose=True,
-        top_k_trials=3
+        top_k_trials=1  # Quality over quantity - keep only best trial per dataset
     )
     
     print(f"✅ Model saved to: {model_path}")
@@ -221,29 +222,42 @@ def generate_random_hyperparameters(dataset_size=1000, n_features=10, random_sta
         random.seed(random_state)
         np.random.seed(random_state)
     
-    # Calculate max_depth range based on dataset size (same as KB)
+    # Get configuration from ModelConfigs to ensure perfect consistency
+    config = ModelConfigs.get_random_forest_config()
+    param_config = config['param_config']
+    
+    # Handle max_depth (percentage-based, same as KB)
     max_theoretical_depth = max(1, int(math.log2(dataset_size) * 2))
-    max_depth_percentages = [0.25, 0.50, 0.70, 0.8, 0.9, 0.999]
+    max_depth_percentages = param_config['max_depth']['percentage_splits']
     max_depth_options = [max(1, int(p * max_theoretical_depth)) for p in max_depth_percentages]
     max_depth_options.append(None)  # Add unlimited depth option
     
-    # Calculate percentage-based sample parameters  
-    min_samples_split_percentages = [0.01, 0.02, 0.05, 0.10, 0.20]
-    min_samples_split_options = [max(2, int(p * dataset_size)) for p in min_samples_split_percentages]
+    # Use continuous sampling from ModelConfigs ranges (ensures perfect consistency)
+    min_samples_split_config = param_config['min_samples_split']
+    min_samples_split_pct = round(random.uniform(min_samples_split_config['min_value'], 
+                                               min_samples_split_config['max_value']), 6)
+    min_samples_split_val = max(2, int(min_samples_split_pct * dataset_size))
     
-    min_samples_leaf_percentages = [0.005, 0.01, 0.02, 0.05, 0.10]  
-    min_samples_leaf_options = [max(1, int(p * dataset_size)) for p in min_samples_leaf_percentages]
+    min_samples_leaf_config = param_config['min_samples_leaf']
+    min_samples_leaf_pct = round(random.uniform(min_samples_leaf_config['min_value'], 
+                                              min_samples_leaf_config['max_value']), 6)
+    min_samples_leaf_val = max(1, int(min_samples_leaf_pct * dataset_size))
     
-    # Calculate percentage-based feature parameters
-    max_features_percentages = [0.50, 0.70, 0.8, 0.9, 0.99]
-    max_features_options = [max(1, int(p * n_features)) for p in max_features_percentages]
+    max_features_config = param_config['max_features']
+    max_features_pct = round(random.uniform(max_features_config['min_value'], 
+                                          max_features_config['max_value']), 6)
+    max_features_val = max(1, int(max_features_pct * n_features))
+    
+    # n_estimators range from ModelConfigs
+    n_estimators_config = param_config['n_estimators']
     
     return {
-        'n_estimators': random.randint(10, 250),
+        'n_estimators': random.randint(n_estimators_config['min_value'], 
+                                     n_estimators_config['max_value']),
         'max_depth': random.choice(max_depth_options),
-        'min_samples_split': random.choice(min_samples_split_options),
-        'min_samples_leaf': random.choice(min_samples_leaf_options),
-        'max_features': random.choice(max_features_options)
+        'min_samples_split': min_samples_split_val,
+        'min_samples_leaf': min_samples_leaf_val,
+        'max_features': max_features_val
     }
 
 def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, n_seeds=1):
@@ -424,8 +438,8 @@ def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, 
                 uplift_pct = (uplift / auc_random_mean * 100) if auc_random_mean > 0 else 0
                 print(f"🚀 Uplift vs random: {uplift:+.4f} ({uplift_pct:+.1f}%)")
                 
-                # Store results
-                results.append({
+                # Store results with hyperparameters for debugging
+                result_dict = {
                     'dataset_id': dataset_id,
                     'dataset_name': dataset_name,
                     'auc_predicted': auc_predicted_mean,
@@ -437,7 +451,17 @@ def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, 
                     'uplift_random': uplift,
                     'uplift_random_pct': uplift_pct,
                     'n_seeds': n_seeds
-                })
+                }
+                
+                # Add predicted hyperparameters for debugging
+                for param_name, param_value in predicted_params.items():
+                    result_dict[f'predicted_{param_name}'] = param_value
+                
+                # Add last random hyperparameters for debugging (from final seed)
+                for param_name, param_value in random_params.items():
+                    result_dict[f'random_{param_name}'] = param_value
+                
+                results.append(result_dict)
                 
             else:
                 # Single seed evaluation (original approach)
@@ -466,8 +490,8 @@ def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, 
                     uplift_pct = (uplift / auc_random * 100) if auc_random > 0 else 0
                     print(f"🚀 Uplift vs random: {uplift:+.4f} ({uplift_pct:+.1f}%)")
                     
-                    # Store results
-                    results.append({
+                    # Store results with hyperparameters for debugging
+                    result_dict = {
                         'dataset_id': dataset_id,
                         'dataset_name': dataset_name,
                         'auc_predicted': auc_predicted,
@@ -477,7 +501,17 @@ def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, 
                         'auc_random': auc_random,
                         'uplift_random': uplift,
                         'uplift_random_pct': uplift_pct
-                    })
+                    }
+                    
+                    # Add predicted hyperparameters for debugging
+                    for param_name, param_value in predicted_params.items():
+                        result_dict[f'predicted_{param_name}'] = param_value
+                    
+                    # Add random hyperparameters for debugging
+                    for param_name, param_value in random_params.items():
+                        result_dict[f'random_{param_name}'] = param_value
+                    
+                    results.append(result_dict)
                 else:
                     # Store results without benchmark
                     results.append({

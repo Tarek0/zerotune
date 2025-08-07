@@ -75,9 +75,9 @@ class ModelConfigs:
             'param_config': {
                 'n_estimators': {'min_value': 10, 'max_value': 250, 'param_type': "int"},
                 'max_depth': {'percentage_splits': [0.25, 0.50, 0.70, 0.8, 0.9, 0.999], 'param_type': "float", 'dependency': 'n_samples'},
-                'min_samples_split': {'percentage_splits': [0.01, 0.02, 0.05, 0.10, 0.20], 'param_type': "float"},
-                'min_samples_leaf': {'percentage_splits': [0.005, 0.01, 0.02, 0.05, 0.10], 'param_type': "float"},
-                'max_features': {'percentage_splits': [0.50, 0.70, 0.8, 0.9, 0.99], 'param_type': "float"}
+                'min_samples_split': {'min_value': 0.01, 'max_value': 0.20, 'param_type': "float"},
+                'min_samples_leaf': {'min_value': 0.005, 'max_value': 0.10, 'param_type': "float"},
+                'max_features': {'min_value': 0.10, 'max_value': 0.99, 'param_type': "float"}
             }
         }
     
