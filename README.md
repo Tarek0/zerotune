@@ -40,6 +40,12 @@ print(f"Optimal hyperparameters: {best_params}")
 - **Binary**, **multiclass**, and **regression** tasks supported
 - **Custom model training** from your own knowledge bases
 
+### Optuna TPE Warm-Start Integration
+- **Warm-start Optuna TPE** with zero-shot predictions for faster convergence
+- **Comparative benchmarking** against standard Optuna TPE and random hyperparameters
+- **Statistical validation** with paired t-tests and significance testing
+- **Convergence tracking** at multiple checkpoints (1, 5, 10, 15, 20 trials)
+
 ### Knowledge Base Building (For Training New Predictors)
 - Collect comprehensive HPO experiment data from multiple datasets
 - Extract 22+ dataset meta-features with statistical moments and numerical stability
@@ -144,6 +150,11 @@ poetry run python xgb_experiment.py eval-test    # Evaluate on unseen data
 poetry run python xgb_experiment.py full         # Build comprehensive KB
 poetry run python xgb_experiment.py train-full   # Train robust predictor
 poetry run python xgb_experiment.py eval-full    # Evaluate performance
+
+# Advanced Optuna Benchmarking (with warm-start evaluation)
+poetry run python decision_tree_experiment.py eval-full --optuna --optuna_trials 25
+poetry run python random_forest_experiment.py eval-full --optuna --optuna_trials 25
+poetry run python xgb_experiment.py eval-full --optuna --optuna_trials 25
 ```
 
 ## 🏗️ Architecture
@@ -161,6 +172,17 @@ poetry run python xgb_experiment.py eval-full    # Evaluate performance
 │ • Store full trials │    │ • Meta-features →    │    │ • High performance  │
 │   dataframes        │    │   Hyperparameters    │    │                     │
 └─────────────────────┘    └──────────────────────┘    └─────────────────────┘
+                                                                     │
+                                                                     ▼
+                           ┌──────────────────────┐    ┌─────────────────────┐
+                           │   Optuna TPE         │◀───│  Benchmarking &     │
+                           │   Warm-Start         │    │  Evaluation         │
+                           │                      │    │                     │
+                           │ • Zero-shot init     │    │ • Multi-seed eval   │
+                           │ • Convergence track  │    │ • Optuna comparison │
+                           │ • study.enqueue()    │    │ • Trial data export │
+                           │ • Checkpoint analysis│    │ • 50-seed robustness│
+                           └──────────────────────┘    └─────────────────────┘
 ```
 
 ### Key Technical Components
@@ -180,6 +202,12 @@ poetry run python xgb_experiment.py eval-full    # Evaluate performance
    - Instant hyperparameter prediction (<1ms)
    - Automatic feature selection application
    - Competitive performance across diverse datasets
+
+4. **Optuna TPE Warm-Start** (`optimize_hyperparameters`):
+   - Warm-start Optuna TPE with zero-shot predictions via `study.enqueue_trial()`
+   - Comparative benchmarking against standard Optuna TPE
+   - Multi-seed evaluation for statistical robustness
+   - Trial data export for convergence analysis
 
 ## 📊 Performance
 

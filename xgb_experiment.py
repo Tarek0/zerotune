@@ -14,6 +14,7 @@ CURRENT STATUS: 🔧 STRONG PERFORMANCE ACHIEVED!
 ARCHITECTURE:
 - zerotune/core/predictor_training.py: Advanced training with RFECV & GroupKFold
 - zerotune/core/feature_extraction.py: Robust meta-feature extraction (fixed)
+- zerotune/core/optimization.py: Optuna TPE optimization with warm-start support (study.enqueue_trial)
 - zerotune/predictors.py: Zero-shot predictor class for inference
 - models/predictor_xgboost_xgb_kb_v1_full.joblib: Production-ready trained model
 - knowledge_base/kb_xgboost_xgb_kb_v1_full.json: Clean, comprehensive training data
@@ -39,10 +40,15 @@ OPTIMIZATION APPROACH (Perfected):
 SYSTEM STATUS: 🏆 PRODUCTION-READY & STRONG RELIABILITY  
 Delivering 90% win rate with consistent +0.7% improvement - excellent performance!
 
-NEXT STEPS PLANNED:
-🔄 Optuna TPE Warm-Start Integration: Use zero-shot predictions to warm-start Optuna TPE
-📊 Benchmark: warm-started Optuna TPE vs standard Optuna TPE
-🎯 Expected: Further performance improvements by combining zero-shot + optimization
+OPTUNA TPE WARM-START INTEGRATION: ✅ IMPLEMENTED!
+🚀 Optuna TPE Warm-Start: Use zero-shot predictions to initialize Optuna TPE optimization
+📊 Comprehensive Benchmarking: Compares 4 approaches:
+   - Zero-shot predictions (instant, no optimization)
+   - Random hyperparameters (baseline)
+   - Warm-started Optuna TPE (zero-shot + optimization)
+   - Standard Optuna TPE (optimization only)
+🎯 Usage: python xgb_experiment.py eval-full --optuna --optuna_trials 25
+📊 Trial Data Storage: Saves detailed Optuna trial data for convergence analysis
 
 DATASET COLLECTIONS:
 - Training (test): [31, 38] - 2 datasets for quick development
@@ -62,7 +68,8 @@ from zerotune import ZeroTune
 from zerotune.core.predictor_training import train_predictor_from_knowledge_base
 from zerotune.core.data_loading import fetch_open_ml_data, prepare_data
 from zerotune.core.feature_extraction import calculate_dataset_meta_parameters
-from zerotune.core.utils import convert_to_dataframe
+from zerotune.core.utils import convert_to_dataframe, save_trial_data
+from zerotune.core.optimization import optimize_hyperparameters
 from zerotune.core.model_configs import ModelConfigs
 from xgboost import XGBClassifier
 from sklearn.model_selection import train_test_split
@@ -212,45 +219,9 @@ def train_zero_shot_predictor(kb_path=None, mode="test"):
         print(f"\n❌ Error during predictor training: {str(e)}")
         return None
 
-def generate_random_hyperparameters(dataset_size=1000, random_state=42):
-    """
-    Generate random hyperparameters for XGBoost matching KB configuration ranges.
-    
-    Args:
-        dataset_size: Size of dataset for max_depth percentage calculation
-        random_state: Random seed for reproducibility
-        
-    Returns:
-        Dictionary of random hyperparameters
-    """
-    import math
-    random.seed(random_state)
-    np.random.seed(random_state)
-    
-    # Get configuration from ModelConfigs to ensure perfect consistency
-    config = ModelConfigs.get_xgboost_config()
-    param_config = config['param_config']
-    
-    # Handle max_depth (percentage-based, same as KB)
-    max_theoretical_depth = max(1, int(math.log2(dataset_size) * 2))
-    max_depth_percentages = param_config['max_depth']['percentage_splits']
-    max_depth_options = [max(1, int(p * max_theoretical_depth)) for p in max_depth_percentages]
-    
-    # Use continuous sampling from ModelConfigs ranges (ensures perfect consistency)
-    n_estimators_config = param_config['n_estimators']
-    learning_rate_config = param_config['learning_rate']
-    subsample_config = param_config['subsample']
-    colsample_bytree_config = param_config['colsample_bytree']
-    
-    return {
-        'n_estimators': random.randint(n_estimators_config['min_value'], n_estimators_config['max_value']),
-        'max_depth': random.choice(max_depth_options),  # Percentage-based like KB
-        'learning_rate': round(random.uniform(learning_rate_config['min_value'], learning_rate_config['max_value']), 6),
-        'subsample': round(random.uniform(subsample_config['min_value'], subsample_config['max_value']), 6),
-        'colsample_bytree': round(random.uniform(colsample_bytree_config['min_value'], colsample_bytree_config['max_value']), 6)
-    }
+# Removed: Now using ModelConfigs.generate_random_hyperparameters()
 
-def run_benchmark_hpo(X_train, y_train, X_test, y_test, benchmark_type="random", n_trials=10, random_state=42):
+def run_benchmark_hpo(X_train, y_train, X_test, y_test, benchmark_type="random", n_trials=10, random_state=42, initial_params=None):
     """
     Run benchmark hyperparameter optimization.
     
@@ -260,14 +231,17 @@ def run_benchmark_hpo(X_train, y_train, X_test, y_test, benchmark_type="random",
         benchmark_type: Type of benchmark ("random", "optuna")
         n_trials: Number of trials for optimization-based benchmarks
         random_state: Random seed for reproducibility
+        initial_params: Initial parameters for warm-start (used with optuna)
         
     Returns:
         Tuple of (best_params, best_score, benchmark_info)
     """
     if benchmark_type == "random":
         # Simple random hyperparameters
-        params = generate_random_hyperparameters(
+        params = ModelConfigs.generate_random_hyperparameters(
+            model_type='xgboost',
             dataset_size=X_train.shape[0], 
+            n_features=X_train.shape[1],
             random_state=random_state
         )
         
@@ -291,11 +265,25 @@ def run_benchmark_hpo(X_train, y_train, X_test, y_test, benchmark_type="random",
             return params, 0.0, {"type": "random", "trials": 1, "error": str(e)}
     
     elif benchmark_type == "optuna":
-        # TODO: Implement Optuna HPO benchmark
-        # This will run actual HPO for comparison
-        # For now, return random as placeholder
-        print("⚠️ Optuna benchmark not yet implemented, using random baseline")
-        return run_benchmark_hpo(X_train, y_train, X_test, y_test, "random", n_trials, random_state)
+        # Optuna TPE benchmark
+        try:
+            warmstart_label = "warm-started" if initial_params else "standard"
+            print(f"🔄 Running {warmstart_label} Optuna TPE ({n_trials} trials)...")
+            
+            best_params, best_score, study_df = optimize_hyperparameters(
+                X_train, y_train, X_test, y_test,
+                model_type='xgboost',
+                n_trials=n_trials,
+                initial_params=initial_params,
+                random_state=random_state,
+                verbose=False
+            )
+            
+            return best_params, best_score, {"type": "optuna", "trials": n_trials, "study_df": study_df, "warmstart": initial_params is not None}
+            
+        except Exception as e:
+            print(f"⚠️ Optuna benchmark failed: {e}")
+            return run_benchmark_hpo(X_train, y_train, X_test, y_test, "random", n_trials, random_state)
     
     else:
         raise ValueError(f"Unknown benchmark type: {benchmark_type}")
@@ -328,7 +316,7 @@ def evaluate_hyperparameters(params, X_train, y_train, X_test, y_test):
     except Exception:
         return 0.0
 
-def test_zero_shot_predictor(model_path=None, mode="test", test_dataset_ids=None, benchmark_types=["random"], save_csv=True, n_seeds=1):
+def test_zero_shot_predictor(model_path=None, mode="test", test_dataset_ids=None, benchmark_types=["random"], save_csv=True, n_seeds=1, optuna_n_trials=20):
     """
     Test a trained zero-shot predictor on unseen datasets.
     
@@ -338,6 +326,8 @@ def test_zero_shot_predictor(model_path=None, mode="test", test_dataset_ids=None
         test_dataset_ids: List of dataset IDs to test on (uses UNSEEN_TEST_DATASETS if None)
         benchmark_types: List of benchmark types to run (["random"], ["optuna"], or ["random", "optuna"])
         save_csv: Whether to save results to CSV file (default: True)
+        n_seeds: Number of random seeds for robust evaluation
+        optuna_n_trials: Number of Optuna trials for benchmarking
     """
     print("ZEROTUNE ZERO-SHOT PREDICTOR EVALUATION")
     print("=" * 60)
@@ -480,12 +470,50 @@ def test_zero_shot_predictor(model_path=None, mode="test", test_dataset_ids=None
                         
                         # Run benchmarks with same data split
                         for benchmark_type in benchmark_types:
-                            benchmark_params, benchmark_score, benchmark_info = run_benchmark_hpo(
-                                X_train, y_train, X_test, y_test, 
-                                benchmark_type=benchmark_type,
-                                random_state=current_seed  # Use consistent seed
-                            )
-                            seed_benchmark_results[benchmark_type].append(benchmark_score)
+                            if benchmark_type == "optuna":
+                                # Run both warm-started and standard Optuna for multi-seed
+                                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                                
+                                # Warm-started Optuna
+                                warmstart_params, warmstart_score, warmstart_info = run_benchmark_hpo(
+                                    X_train, y_train, X_test, y_test, 
+                                    benchmark_type="optuna",
+                                    n_trials=optuna_n_trials,
+                                    random_state=current_seed,
+                                    initial_params=predicted_params
+                                )
+                                
+                                # Standard Optuna
+                                standard_params, standard_score, standard_info = run_benchmark_hpo(
+                                    X_train, y_train, X_test, y_test, 
+                                    benchmark_type="optuna",
+                                    n_trials=optuna_n_trials,
+                                    random_state=current_seed,
+                                    initial_params=None
+                                )
+                                
+                                # Save trial data
+                                if 'study_df' in warmstart_info:
+                                    save_trial_data(warmstart_info['study_df'], 'warmstart', dataset_id, current_seed, timestamp, EXPERIMENT_ID)
+                                if 'study_df' in standard_info:
+                                    save_trial_data(standard_info['study_df'], 'standard', dataset_id, current_seed, timestamp, EXPERIMENT_ID)
+                                
+                                # Store both results separately
+                                if 'optuna_warmstart' not in seed_benchmark_results:
+                                    seed_benchmark_results['optuna_warmstart'] = []
+                                if 'optuna_standard' not in seed_benchmark_results:
+                                    seed_benchmark_results['optuna_standard'] = []
+                                    
+                                seed_benchmark_results['optuna_warmstart'].append(warmstart_score)
+                                seed_benchmark_results['optuna_standard'].append(standard_score)
+                                
+                            else:
+                                benchmark_params, benchmark_score, benchmark_info = run_benchmark_hpo(
+                                    X_train, y_train, X_test, y_test, 
+                                    benchmark_type=benchmark_type,
+                                    random_state=current_seed  # Use consistent seed
+                                )
+                                seed_benchmark_results[benchmark_type].append(benchmark_score)
                     
                     # Calculate averages and standard deviations
                     auc_predicted = np.mean(seed_results)
@@ -494,23 +522,37 @@ def test_zero_shot_predictor(model_path=None, mode="test", test_dataset_ids=None
                     
                     # Process benchmark results
                     benchmark_results = {}
-                    for benchmark_type in benchmark_types:
-                        benchmark_scores = seed_benchmark_results[benchmark_type]
-                        benchmark_score = np.mean(benchmark_scores)
-                        benchmark_score_std = np.std(benchmark_scores)
-                        
-                        uplift = auc_predicted - benchmark_score
-                        print(f"📊 {benchmark_type.title()} AUC: {benchmark_score:.4f} ± {benchmark_score_std:.4f} (avg over {n_seeds} seeds)")
-                        print(f"🚀 Uplift vs {benchmark_type}: {uplift:+.4f} ({(uplift/benchmark_score*100):+.1f}%)")
-                        
-                        benchmark_results[benchmark_type] = {
-                            'score': benchmark_score,
-                            'score_std': benchmark_score_std,
-                            'uplift': uplift,
-                            'uplift_percent': (uplift/benchmark_score*100) if benchmark_score > 0 else 0,
-                            'params': {},  # Multi-seed doesn't store specific params
-                            'info': f"Average over {n_seeds} seeds"
-                        }
+                    
+                    # Handle all benchmark types including the split Optuna results
+                    all_result_keys = set(seed_benchmark_results.keys())
+                    
+                    for result_key in all_result_keys:
+                        if result_key in seed_benchmark_results and seed_benchmark_results[result_key]:
+                            benchmark_scores = seed_benchmark_results[result_key]
+                            benchmark_score = np.mean(benchmark_scores)
+                            benchmark_score_std = np.std(benchmark_scores)
+                            
+                            uplift = auc_predicted - benchmark_score
+                            
+                            # Format display name
+                            if result_key == 'optuna_warmstart':
+                                display_name = "Warm-started Optuna"
+                            elif result_key == 'optuna_standard':
+                                display_name = "Standard Optuna"
+                            else:
+                                display_name = result_key.title()
+                            
+                            print(f"📊 {display_name} AUC: {benchmark_score:.4f} ± {benchmark_score_std:.4f} (avg over {n_seeds} seeds)")
+                            print(f"🚀 Uplift vs {result_key}: {uplift:+.4f} ({(uplift/benchmark_score*100):+.1f}%)")
+                            
+                            benchmark_results[result_key] = {
+                                'score': benchmark_score,
+                                'score_std': benchmark_score_std,
+                                'uplift': uplift,
+                                'uplift_percent': (uplift/benchmark_score*100) if benchmark_score > 0 else 0,
+                                'params': {},  # Multi-seed doesn't store specific params
+                                'info': f"Average over {n_seeds} seeds"
+                            }
                 
                 else:
                     # Single seed evaluation (original logic)
@@ -524,26 +566,79 @@ def test_zero_shot_predictor(model_path=None, mode="test", test_dataset_ids=None
                     benchmark_results = {}
                     
                     for benchmark_type in benchmark_types:
-                        print(f"\n🔄 Running {benchmark_type} benchmark...")
-                        
-                        benchmark_params, benchmark_score, benchmark_info = run_benchmark_hpo(
-                            X_train, y_train, X_test, y_test, 
-                            benchmark_type=benchmark_type,
-                            random_state=dataset_id
-                        )
-                        
-                        uplift = auc_predicted - benchmark_score
-                        
-                        print(f"📊 {benchmark_type.title()} hyperparameters:")
-                        for param, value in benchmark_params.items():
-                            print(f"  {param}: {value}")
-                        print(f"📊 {benchmark_type.title()} AUC: {benchmark_score:.4f}")
-                        print(f"🚀 Uplift vs {benchmark_type}: {uplift:+.4f} ({(uplift/benchmark_score*100):+.1f}%)")
-                        
-                        benchmark_results[benchmark_type] = {
-                        'params': benchmark_params,
-                        'score': benchmark_score,
-                        'uplift': uplift,
+                        if benchmark_type == "optuna":
+                            # Run both warm-started and standard Optuna TPE
+                            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                            
+                            # Warm-started Optuna TPE
+                            print(f"\n🌱 Running warm-started Optuna TPE benchmark...")
+                            warmstart_params, warmstart_score, warmstart_info = run_benchmark_hpo(
+                                X_train, y_train, X_test, y_test, 
+                                benchmark_type="optuna",
+                                n_trials=optuna_n_trials,
+                                random_state=dataset_id,
+                                initial_params=predicted_params
+                            )
+                            
+                            # Standard Optuna TPE  
+                            print(f"\n🔍 Running standard Optuna TPE benchmark...")
+                            standard_params, standard_score, standard_info = run_benchmark_hpo(
+                                X_train, y_train, X_test, y_test, 
+                                benchmark_type="optuna",
+                                n_trials=optuna_n_trials,
+                                random_state=dataset_id,
+                                initial_params=None
+                            )
+                            
+                            # Save trial data
+                            if 'study_df' in warmstart_info:
+                                save_trial_data(warmstart_info['study_df'], 'warmstart', dataset_id, dataset_id, timestamp, EXPERIMENT_ID)
+                            if 'study_df' in standard_info:
+                                save_trial_data(standard_info['study_df'], 'standard', dataset_id, dataset_id, timestamp, EXPERIMENT_ID)
+                            
+                            # Calculate uplifts
+                            warmstart_uplift = auc_predicted - warmstart_score
+                            standard_uplift = auc_predicted - standard_score
+                            
+                            print(f"✅ Warm-started Optuna AUC: {warmstart_score:.4f}")
+                            print(f"✅ Standard Optuna AUC: {standard_score:.4f}")
+                            print(f"🚀 Uplift vs warm-started: {warmstart_uplift:+.4f} ({(warmstart_uplift/warmstart_score*100):+.1f}%)")
+                            print(f"🚀 Uplift vs standard: {standard_uplift:+.4f} ({(standard_uplift/standard_score*100):+.1f}%)")
+                            
+                            # Store both results
+                            benchmark_results['optuna_warmstart'] = {
+                                'params': warmstart_params,
+                                'score': warmstart_score,
+                                'uplift': warmstart_uplift,
+                            }
+                            benchmark_results['optuna_standard'] = {
+                                'params': standard_params,
+                                'score': standard_score,
+                                'uplift': standard_uplift,
+                            }
+                            
+                        else:
+                            # Handle non-Optuna benchmarks (random, etc.)
+                            print(f"\n🔄 Running {benchmark_type} benchmark...")
+                            
+                            benchmark_params, benchmark_score, benchmark_info = run_benchmark_hpo(
+                                X_train, y_train, X_test, y_test, 
+                                benchmark_type=benchmark_type,
+                                random_state=dataset_id
+                            )
+                            
+                            uplift = auc_predicted - benchmark_score
+                            
+                            print(f"📊 {benchmark_type.title()} hyperparameters:")
+                            for param, value in benchmark_params.items():
+                                print(f"  {param}: {value}")
+                            print(f"📊 {benchmark_type.title()} AUC: {benchmark_score:.4f}")
+                            print(f"🚀 Uplift vs {benchmark_type}: {uplift:+.4f} ({(uplift/benchmark_score*100):+.1f}%)")
+                            
+                            benchmark_results[benchmark_type] = {
+                            'params': benchmark_params,
+                            'score': benchmark_score,
+                            'uplift': uplift,
                         'info': benchmark_info
                     }
                 
@@ -734,86 +829,77 @@ def print_dataset_info():
     print(f"Training datasets (full): {FULL_DATASET_COLLECTION}")
     print(f"Unseen test datasets: {UNSEEN_TEST_DATASETS}")
 
-def main():
-    """Main function for knowledge base building and predictor training."""
+if __name__ == "__main__":
     print("XGBoost Knowledge Base Builder for Zero-Shot HPO")
     print("=" * 70)
     
-    # Check command line arguments
-    if len(sys.argv) > 1:
-        mode = sys.argv[1].lower()
-    else:
-        mode = "info"
-    
-    if mode == "test":
-        # Build knowledge base with test datasets (2 datasets, 10 iterations)
-        print("Building TEST knowledge base...")
-        kb_path, kb = build_knowledge_base(
-            dataset_ids=TEST_DATASET_COLLECTION,
-            n_iter=10,
-            mode="test"
-        )
-        
-    elif mode == "full":
-        # Build knowledge base with all datasets (15 datasets, 50 iterations)
-        print("Building FULL knowledge base...")
-        kb_path, kb = build_knowledge_base(
-            dataset_ids=FULL_DATASET_COLLECTION,
-            n_iter=50,
-            mode="full"
-        )
-        
-    elif mode == "train-test":
-        # Train predictor from test knowledge base
-        print("Training zero-shot predictor from TEST knowledge base...")
-        predictor = train_zero_shot_predictor(mode="test")
-        
-    elif mode == "train-full":
-        # Train predictor from full knowledge base
-        print("Training zero-shot predictor from FULL knowledge base...")
-        predictor = train_zero_shot_predictor(mode="full")
-        
-    elif mode == "eval-test":
-        # Evaluate trained predictor from test KB on unseen datasets
-        print("Evaluating TEST predictor on unseen datasets...")
-        results = test_zero_shot_predictor(mode="test", benchmark_types=["random"])
-        
-    elif mode == "eval-full":
-        # Evaluate trained predictor from full KB on unseen datasets
-        print("Evaluating FULL predictor on unseen datasets...")
-        results = test_zero_shot_predictor(mode="full", benchmark_types=["random"], n_seeds=50)
-        
-    elif mode == "info":
-        # Show dataset information
-        print_dataset_info()
-        print(f"\nExperiment ID: {EXPERIMENT_ID}")
-        print("\nUsage:")
-        print("  python xgb_experiment.py test         # Build test KB (2 datasets, 10 iter)")
+    if len(sys.argv) < 2:
+        print("Usage:")
+        print("  python xgb_experiment.py test          # Build test KB (2 datasets, 10 iter)")
         print("  python xgb_experiment.py full         # Build full KB (15 datasets, 50 iter)")
         print("  python xgb_experiment.py train-test   # Train predictor from test KB")
         print("  python xgb_experiment.py train-full   # Train predictor from full KB")
-        print("  python xgb_experiment.py eval-test    # Evaluate test predictor vs random baseline")
-        print("  python xgb_experiment.py eval-full    # Evaluate full predictor vs random baseline")
-        print("  python xgb_experiment.py info         # Show dataset information")
-        print("\nComplete Workflow:")
-        print("  1. Build knowledge base: python xgb_experiment.py test")
-        print("  2. Train predictor:      python xgb_experiment.py train-test")
-        print("  3. Evaluate predictor:   python xgb_experiment.py eval-test")
-        print("  4. Use in production:    from zerotune import ZeroTunePredictor")
-        return
-        
-    else:
-        print("Invalid mode. Use 'test', 'full', 'train-test', 'train-full', 'eval-test', 'eval-full', or 'info'")
-        return
+        print("  python xgb_experiment.py eval-test    # Evaluate test predictor")
+        print("  python xgb_experiment.py eval-full    # Evaluate full predictor")
+        print("  python xgb_experiment.py eval-full --optuna # Include Optuna TPE benchmarks")
+        print("  python xgb_experiment.py eval-full --optuna --optuna_trials 30  # Custom trial count (default: 20)")
+        sys.exit(0)
     
-    if mode in ["test", "full"] and 'kb_path' in locals():
-        if kb_path:
-            print(f"\n🎉 Knowledge base building completed!")
-            print(f"📁 Output: {kb_path}")
-            print("\nNext step: Train a zero-shot predictor with:")
-            print(f"  python xgb_experiment.py train-{mode}")
+    command = sys.argv[1]
+    
+    # Parse optional arguments
+    include_optuna_benchmark = False
+    optuna_n_trials = 20  # default
+    
+    if "--optuna" in sys.argv:
+        include_optuna_benchmark = True
+        print("Including Optuna TPE benchmarking")
+    
+    if "--optuna_trials" in sys.argv:
+        try:
+            idx = sys.argv.index("--optuna_trials")
+            if idx + 1 < len(sys.argv):
+                optuna_n_trials = int(sys.argv[idx + 1])
+                print(f"Using optuna_n_trials = {optuna_n_trials}")
+        except (ValueError, IndexError):
+            print("Warning: Invalid --optuna_trials value, using default (20)")
+    
+    try:
+        if command == "test":
+            kb_path, kb = build_knowledge_base(
+                dataset_ids=TEST_DATASET_COLLECTION,
+                n_iter=10,
+                mode="test"
+            )
+        elif command == "full":
+            kb_path, kb = build_knowledge_base(
+                dataset_ids=FULL_DATASET_COLLECTION,
+                n_iter=50,
+                mode="full"
+            )
+        elif command == "train-test":
+            predictor = train_zero_shot_predictor(mode="test")
+        elif command == "train-full":
+            predictor = train_zero_shot_predictor(mode="full")
+        elif command == "eval-test":
+            results = test_zero_shot_predictor(
+                mode="test",
+                benchmark_types=["random", "optuna"] if include_optuna_benchmark else ["random"],
+                optuna_n_trials=optuna_n_trials
+            )
+        elif command == "eval-full":
+            results = test_zero_shot_predictor(
+                mode="full", 
+                benchmark_types=["random", "optuna"] if include_optuna_benchmark else ["random"],
+                n_seeds=50,
+                optuna_n_trials=optuna_n_trials
+            )
         else:
-            print("\n❌ Knowledge base building failed.")
-
-if __name__ == "__main__":
-    main() 
+            print("❌ Unknown command. Use one of: test, full, train-test, train-full, eval-test, eval-full")
+            
+    except KeyboardInterrupt:
+        print("\n⚠️ Operation cancelled by user")
+        sys.exit(1)
+    except Exception as e:
+        print(f"❌ Error: {e}")
+        sys.exit(1) 

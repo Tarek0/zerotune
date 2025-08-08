@@ -9,12 +9,48 @@ import numpy as np
 import pandas as pd
 import json
 import os
+from datetime import datetime
 from sklearn.base import BaseEstimator
 
 # Type aliases
 ArrayLike = Union[np.ndarray, pd.DataFrame, pd.Series]
 HyperParams = Dict[str, Any]
 MetaFeatures = Dict[str, float]
+
+
+
+def save_trial_data(study_df: pd.DataFrame, method: str, dataset_id: int, seed: int, 
+                   timestamp: str, experiment_id: str) -> None:
+    """
+    Save Optuna trial data to CSV file by method.
+    
+    This is a general utility function that can be used across all ML algorithms
+    (Decision Trees, Random Forest, XGBoost, etc.) to save trial data consistently.
+    
+    Args:
+        study_df: DataFrame from study.trials_dataframe()
+        method: Method name ('warmstart', 'standard', 'random_search', etc.)
+        dataset_id: Dataset ID for tracking
+        seed: Random seed used
+        timestamp: Timestamp for file naming
+        experiment_id: Experiment ID for file naming (e.g., 'dt_kb_v1', 'rf_kb_v2', 'xgb_kb_v1')
+    """
+    # Ensure benchmarks directory exists
+    os.makedirs("benchmarks", exist_ok=True)
+    
+    # Add metadata columns
+    study_df = study_df.copy()
+    study_df['dataset_id'] = dataset_id
+    study_df['seed'] = seed
+    study_df['method'] = method
+    study_df['experiment_id'] = experiment_id
+    
+    # Define file path based on method and experiment_id
+    file_path = f"benchmarks/optuna_trials_{method}_{experiment_id}_full_optuna_{timestamp}.csv"
+    
+    # Save to CSV with append mode (create header only if file doesn't exist)
+    file_exists = os.path.exists(file_path)
+    study_df.to_csv(file_path, mode='a', header=not file_exists, index=False)
 
 
 def safe_json_serialize(obj: Any) -> Any:
