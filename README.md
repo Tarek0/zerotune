@@ -43,8 +43,6 @@ print(f"Optimal hyperparameters: {best_params}")
 ### Optuna TPE Warm-Start Integration
 - **Warm-start Optuna TPE** with zero-shot predictions for faster convergence
 - **Comparative benchmarking** against standard Optuna TPE and random hyperparameters
-- **Statistical validation** with paired t-tests and significance testing
-- **Convergence tracking** at multiple checkpoints (1, 5, 10, 15, 20 trials)
 
 ### Knowledge Base Building (For Training New Predictors)
 - Collect comprehensive HPO experiment data from multiple datasets
@@ -70,7 +68,7 @@ print(f"Optimal hyperparameters: {best_params}")
 curl -sSL https://install.python-poetry.org | python3 -
 
 # Install ZeroTune
-git clone https://github.com/yourusername/zerotune.git
+git clone https://github.com/your-repo/zerotune.git
 cd zerotune
 poetry install
 ```
@@ -292,9 +290,9 @@ Zero-shot predictor provides competitive performance across diverse datasets wit
 | **Metric** | **Value** | **Significance** |
 |------------|-----------|------------------|
 | **Win Rate** | **90% (9/10 datasets)** | Highly reliable performance across test cases |
-| **Average AUC** | **0.8659 ± 0.1363** | Strong predictions with good stability |
+| **Average AUC** | **0.8676 ± 0.1349** | Strong predictions with good stability |
 | **Average Improvement** | **+0.7% over random** | Consistent practical advantage |
-| **Best Single Win** | **+2.0% (KDDCup09_appetency)** | Strong performance on complex datasets |
+| **Best Single Win** | **+2.6% (KDDCup09_appetency)** | Strong performance on complex datasets |
 | **Statistical Robustness** | **50 seeds × 10 datasets** | 500 total experiments for validation |
 
 **Key Breakthrough**:

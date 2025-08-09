@@ -1,0 +1,28 @@
+\begin{table}[htbp]
+\centering
+\caption{DecisionTree: Zero-shot vs Random}
+\label{tab:decisiontree_zeroshot_vs_random}
+\begin{tabular}{lcccc}
+\toprule
+Dataset & Zero-shot & Random & Uplift & P-value \\
+\midrule
+KDDCup09\_appetency & \textbf{0.797} & 0.742 & \textcolor{green}{+7.5\%} & nan \\
+PhishingWebsites & \textbf{0.955} & 0.881 & \textcolor{green}{+8.4\%} & nan \\
+SpeedDating & \textbf{0.810} & 0.761 & \textcolor{green}{+6.4\%} & nan \\
+bank-marketing & \textbf{0.849} & 0.760 & \textcolor{green}{+11.7\%} & nan \\
+blood-transfusion-service-center & \textbf{0.710} & 0.697 & \textcolor{green}{+1.9\%} & nan \\
+dresses-sales & \textbf{0.579} & 0.548 & \textcolor{green}{+5.5\%} & nan \\
+fri\_c1\_1000\_25 & \textbf{0.897} & 0.777 & \textcolor{green}{+15.4\%} & nan \\
+pc4 & \textbf{0.895} & 0.844 & \textcolor{green}{+6.0\%} & nan \\
+qsar-biodeg & \textbf{0.855} & 0.802 & \textcolor{green}{+6.6\%} & nan \\
+wdbc & \textbf{0.969} & 0.955 & \textcolor{green}{+1.4\%} & nan \\
+\bottomrule
+\end{tabular}
+\begin{tablenotes}
+\small
+\item \textbf{Bold}: Better performing method for the dataset.
+\item \underline{Underlined}: Statistically significant difference (p < 0.05).
+\item \textcolor{green}{Green}/\textcolor{red}{Red}: Positive/Negative uplift.
+\item Higher AUC scores indicate better performance.
+\end{tablenotes}
+\end{table}

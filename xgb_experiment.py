@@ -81,6 +81,7 @@ import random
 import sys
 import os
 from datetime import datetime
+from tqdm import tqdm
 
 # Experiment configuration
 EXPERIMENT_ID = "xgb_kb_v1"
@@ -270,13 +271,24 @@ def run_benchmark_hpo(X_train, y_train, X_test, y_test, benchmark_type="random",
             warmstart_label = "warm-started" if initial_params else "standard"
             print(f"🔄 Running {warmstart_label} Optuna TPE ({n_trials} trials)...")
             
-            best_params, best_score, study_df = optimize_hyperparameters(
-                X_train, y_train, X_test, y_test,
-                model_type='xgboost',
-                n_trials=n_trials,
-                initial_params=initial_params,
+            # Get parameter grid for Optuna optimization
+            param_grid = ModelConfigs.get_param_grid_for_optimization('xgboost', X_train.shape)
+            
+            # Prepare warm start configs if initial_params provided
+            warm_start_configs = [initial_params] if initial_params else None
+            
+            best_params, best_score, _, study_df = optimize_hyperparameters(
+                model_class=XGBClassifier,
+                param_grid=param_grid,
+                X_train=X_train,
+                y_train=y_train,
+                metric="roc_auc",
+                n_iter=n_trials,
+                test_size=0.2,
                 random_state=random_state,
-                verbose=False
+                verbose=False,
+                warm_start_configs=warm_start_configs,
+                dataset_meta_params=None
             )
             
             return best_params, best_score, {"type": "optuna", "trials": n_trials, "study_df": study_df, "warmstart": initial_params is not None}
@@ -316,7 +328,7 @@ def evaluate_hyperparameters(params, X_train, y_train, X_test, y_test):
     except Exception:
         return 0.0
 
-def test_zero_shot_predictor(model_path=None, mode="test", test_dataset_ids=None, benchmark_types=["random"], save_csv=True, n_seeds=1, optuna_n_trials=20):
+def test_zero_shot_predictor(model_path=None, mode="test", test_dataset_ids=None, benchmark_types=["random"], save_csv=True, n_seeds=1, include_optuna_benchmark=False, optuna_n_trials=20):
     """
     Test a trained zero-shot predictor on unseen datasets.
     
@@ -327,6 +339,7 @@ def test_zero_shot_predictor(model_path=None, mode="test", test_dataset_ids=None
         benchmark_types: List of benchmark types to run (["random"], ["optuna"], or ["random", "optuna"])
         save_csv: Whether to save results to CSV file (default: True)
         n_seeds: Number of random seeds for robust evaluation
+        include_optuna_benchmark: Whether to include Optuna TPE benchmarking
         optuna_n_trials: Number of Optuna trials for benchmarking
     """
     print("ZEROTUNE ZERO-SHOT PREDICTOR EVALUATION")
@@ -372,15 +385,16 @@ def test_zero_shot_predictor(model_path=None, mode="test", test_dataset_ids=None
         
         results = []
         
-        for dataset_id in test_dataset_ids:
-            print(f"\n🔍 Testing on dataset {dataset_id}")
+        dataset_progress = tqdm(test_dataset_ids, desc="🚀 Evaluating datasets", unit="dataset")
+        for dataset_id in dataset_progress:
             
             try:
                 # Fetch dataset
                 data, target_name, dataset_name = fetch_open_ml_data(dataset_id)
                 X, y = prepare_data(data, target_name)
-                print(f"Dataset: {dataset_name}")
-                print(f"Shape: {X.shape}")
+                
+                # Update progress bar description with current dataset
+                dataset_progress.set_description(f"🚀 Processing {dataset_name} ({X.shape[0]}x{X.shape[1]})")
                 
                 # Calculate meta-features
                 X_df = convert_to_dataframe(X)
@@ -447,16 +461,25 @@ def test_zero_shot_predictor(model_path=None, mode="test", test_dataset_ids=None
                         
                         predicted_params[clean_param_name] = value
                 
-                print("Predicted hyperparameters:")
+                tqdm.write("Predicted hyperparameters:")
                 for param, value in predicted_params.items():
-                    print(f"  {param}: {value}")
+                    tqdm.write(f"  {param}: {value}")
                 
                 # For multiple seeds, collect results across all seeds
                 if n_seeds > 1:
                     seed_results = []
                     seed_benchmark_results = {bt: [] for bt in benchmark_types}
                     
-                    for seed_idx in range(n_seeds):
+                    # Initialize Optuna result lists if benchmarking is enabled
+                    if include_optuna_benchmark:
+                        seed_optuna_warmstart_results = []
+                        seed_optuna_standard_results = []
+                    
+                    # Generate timestamp once for all seeds
+                    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                    
+                    seed_iterator = tqdm(range(n_seeds), desc=f" 🌱 Seeds for {dataset_name}", unit="seed", leave=False)
+                    for seed_idx in seed_iterator:
                         current_seed = 42 + seed_idx
                         
                         # Split data with current seed
@@ -472,7 +495,6 @@ def test_zero_shot_predictor(model_path=None, mode="test", test_dataset_ids=None
                         for benchmark_type in benchmark_types:
                             if benchmark_type == "optuna":
                                 # Run both warm-started and standard Optuna for multi-seed
-                                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
                                 
                                 # Warm-started Optuna
                                 warmstart_params, warmstart_score, warmstart_info = run_benchmark_hpo(
@@ -507,6 +529,11 @@ def test_zero_shot_predictor(model_path=None, mode="test", test_dataset_ids=None
                                 seed_benchmark_results['optuna_warmstart'].append(warmstart_score)
                                 seed_benchmark_results['optuna_standard'].append(standard_score)
                                 
+                                # Also collect in dedicated lists for aggregation
+                                if include_optuna_benchmark:
+                                    seed_optuna_warmstart_results.append(warmstart_score)
+                                    seed_optuna_standard_results.append(standard_score)
+                                
                             else:
                                 benchmark_params, benchmark_score, benchmark_info = run_benchmark_hpo(
                                     X_train, y_train, X_test, y_test, 
@@ -518,13 +545,18 @@ def test_zero_shot_predictor(model_path=None, mode="test", test_dataset_ids=None
                     # Calculate averages and standard deviations
                     auc_predicted = np.mean(seed_results)
                     auc_predicted_std = np.std(seed_results)
-                    print(f"✅ Zero-Shot AUC: {auc_predicted:.4f} ± {auc_predicted_std:.4f} (avg over {n_seeds} seeds)")
                     
                     # Process benchmark results
                     benchmark_results = {}
                     
                     # Handle all benchmark types including the split Optuna results
                     all_result_keys = set(seed_benchmark_results.keys())
+                    
+                    # Calculate random baseline for uplift display
+                    auc_random_mean = None
+                    if 'random' in seed_benchmark_results and seed_benchmark_results['random']:
+                        auc_random_mean = np.mean(seed_benchmark_results['random'])
+                        uplift_pct = ((auc_predicted - auc_random_mean) / auc_random_mean * 100) if auc_random_mean > 0 else 0
                     
                     for result_key in all_result_keys:
                         if result_key in seed_benchmark_results and seed_benchmark_results[result_key]:
@@ -534,23 +566,44 @@ def test_zero_shot_predictor(model_path=None, mode="test", test_dataset_ids=None
                             
                             uplift = auc_predicted - benchmark_score
                             
-                            # Format display name
-                            if result_key == 'optuna_warmstart':
-                                display_name = "Warm-started Optuna"
-                            elif result_key == 'optuna_standard':
-                                display_name = "Standard Optuna"
-                            else:
-                                display_name = result_key.title()
-                            
-                            print(f"📊 {display_name} AUC: {benchmark_score:.4f} ± {benchmark_score_std:.4f} (avg over {n_seeds} seeds)")
-                            print(f"🚀 Uplift vs {result_key}: {uplift:+.4f} ({(uplift/benchmark_score*100):+.1f}%)")
-                            
                             benchmark_results[result_key] = {
                                 'score': benchmark_score,
                                 'score_std': benchmark_score_std,
                                 'uplift': uplift,
                                 'uplift_percent': (uplift/benchmark_score*100) if benchmark_score > 0 else 0,
                                 'params': {},  # Multi-seed doesn't store specific params
+                                'info': f"Average over {n_seeds} seeds"
+                            }
+                    
+                    # Print concise summary
+                    if auc_random_mean is not None:
+                        tqdm.write(f"✅ {dataset_name}: AUC {auc_predicted:.4f} (vs random {auc_random_mean:.4f}, {uplift_pct:+.1f}%)")
+                    else:
+                        tqdm.write(f"✅ {dataset_name}: AUC {auc_predicted:.4f} ± {auc_predicted_std:.4f} ({n_seeds} seeds)")
+                    
+                    # Add aggregated Optuna results if benchmarking is enabled
+                    if include_optuna_benchmark:
+                        # Calculate Optuna warmstart results
+                        auc_optuna_warmstart = np.mean(seed_optuna_warmstart_results) if seed_optuna_warmstart_results else None
+                        auc_optuna_standard = np.mean(seed_optuna_standard_results) if seed_optuna_standard_results else None
+                        
+                        if auc_optuna_warmstart is not None:
+                            benchmark_results['optuna_warmstart'] = {
+                                'score': auc_optuna_warmstart,
+                                'score_std': np.std(seed_optuna_warmstart_results),
+                                'uplift': auc_predicted - auc_optuna_warmstart,
+                                'uplift_percent': ((auc_predicted - auc_optuna_warmstart) / auc_optuna_warmstart * 100) if auc_optuna_warmstart > 0 else 0,
+                                'params': {},
+                                'info': f"Average over {n_seeds} seeds"
+                            }
+                        
+                        if auc_optuna_standard is not None:
+                            benchmark_results['optuna_standard'] = {
+                                'score': auc_optuna_standard,
+                                'score_std': np.std(seed_optuna_standard_results),
+                                'uplift': auc_predicted - auc_optuna_standard,
+                                'uplift_percent': ((auc_predicted - auc_optuna_standard) / auc_optuna_standard * 100) if auc_optuna_standard > 0 else 0,
+                                'params': {},
                                 'info': f"Average over {n_seeds} seeds"
                             }
                 
@@ -560,7 +613,7 @@ def test_zero_shot_predictor(model_path=None, mode="test", test_dataset_ids=None
                     
                     # Test the predicted hyperparameters
                     auc_predicted = evaluate_hyperparameters(predicted_params, X_train, y_train, X_test, y_test)
-                    print(f"✅ Zero-Shot AUC: {auc_predicted:.4f}")
+                    tqdm.write(f"✅ Zero-Shot AUC: {auc_predicted:.4f}")
                     
                     # Run benchmarks
                     benchmark_results = {}
@@ -571,7 +624,7 @@ def test_zero_shot_predictor(model_path=None, mode="test", test_dataset_ids=None
                             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
                             
                             # Warm-started Optuna TPE
-                            print(f"\n🌱 Running warm-started Optuna TPE benchmark...")
+                            tqdm.write(f"\n🌱 Running warm-started Optuna TPE benchmark...")
                             warmstart_params, warmstart_score, warmstart_info = run_benchmark_hpo(
                                 X_train, y_train, X_test, y_test, 
                                 benchmark_type="optuna",
@@ -581,7 +634,7 @@ def test_zero_shot_predictor(model_path=None, mode="test", test_dataset_ids=None
                             )
                             
                             # Standard Optuna TPE  
-                            print(f"\n🔍 Running standard Optuna TPE benchmark...")
+                            tqdm.write(f"\n🔍 Running standard Optuna TPE benchmark...")
                             standard_params, standard_score, standard_info = run_benchmark_hpo(
                                 X_train, y_train, X_test, y_test, 
                                 benchmark_type="optuna",
@@ -600,10 +653,10 @@ def test_zero_shot_predictor(model_path=None, mode="test", test_dataset_ids=None
                             warmstart_uplift = auc_predicted - warmstart_score
                             standard_uplift = auc_predicted - standard_score
                             
-                            print(f"✅ Warm-started Optuna AUC: {warmstart_score:.4f}")
-                            print(f"✅ Standard Optuna AUC: {standard_score:.4f}")
-                            print(f"🚀 Uplift vs warm-started: {warmstart_uplift:+.4f} ({(warmstart_uplift/warmstart_score*100):+.1f}%)")
-                            print(f"🚀 Uplift vs standard: {standard_uplift:+.4f} ({(standard_uplift/standard_score*100):+.1f}%)")
+                            tqdm.write(f"✅ Warm-started Optuna AUC: {warmstart_score:.4f}")
+                            tqdm.write(f"✅ Standard Optuna AUC: {standard_score:.4f}")
+                            tqdm.write(f"🚀 Uplift vs warm-started: {warmstart_uplift:+.4f} ({(warmstart_uplift/warmstart_score*100):+.1f}%)")
+                            tqdm.write(f"🚀 Uplift vs standard: {standard_uplift:+.4f} ({(standard_uplift/standard_score*100):+.1f}%)")
                             
                             # Store both results
                             benchmark_results['optuna_warmstart'] = {
@@ -619,7 +672,7 @@ def test_zero_shot_predictor(model_path=None, mode="test", test_dataset_ids=None
                             
                         else:
                             # Handle non-Optuna benchmarks (random, etc.)
-                            print(f"\n🔄 Running {benchmark_type} benchmark...")
+                            tqdm.write(f"\n🔄 Running {benchmark_type} benchmark...")
                             
                             benchmark_params, benchmark_score, benchmark_info = run_benchmark_hpo(
                                 X_train, y_train, X_test, y_test, 
@@ -629,18 +682,18 @@ def test_zero_shot_predictor(model_path=None, mode="test", test_dataset_ids=None
                             
                             uplift = auc_predicted - benchmark_score
                             
-                            print(f"📊 {benchmark_type.title()} hyperparameters:")
+                            tqdm.write(f"📊 {benchmark_type.title()} hyperparameters:")
                             for param, value in benchmark_params.items():
-                                print(f"  {param}: {value}")
-                            print(f"📊 {benchmark_type.title()} AUC: {benchmark_score:.4f}")
-                            print(f"🚀 Uplift vs {benchmark_type}: {uplift:+.4f} ({(uplift/benchmark_score*100):+.1f}%)")
+                                tqdm.write(f"  {param}: {value}")
+                            tqdm.write(f"📊 {benchmark_type.title()} AUC: {benchmark_score:.4f}")
+                            tqdm.write(f"🚀 Uplift vs {benchmark_type}: {uplift:+.4f} ({(uplift/benchmark_score*100):+.1f}%)")
                             
                             benchmark_results[benchmark_type] = {
-                            'params': benchmark_params,
-                            'score': benchmark_score,
-                            'uplift': uplift,
-                        'info': benchmark_info
-                    }
+                                'params': benchmark_params,
+                                'score': benchmark_score,
+                                'uplift': uplift,
+                                'info': benchmark_info
+                            }
                 
                 results.append({
                     'dataset_id': dataset_id,
@@ -744,7 +797,8 @@ def test_zero_shot_predictor(model_path=None, mode="test", test_dataset_ids=None
             os.makedirs("benchmarks", exist_ok=True)
             
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            csv_filename = f"benchmarks/benchmark_results_{EXPERIMENT_ID}_{mode}_{timestamp}.csv"
+            optuna_suffix = "_optuna" if include_optuna_benchmark else ""
+            csv_filename = f"benchmarks/benchmark_results_{EXPERIMENT_ID}_{mode}{optuna_suffix}_{timestamp}.csv"
             
             print(f"\n💾 Saving results to CSV: {csv_filename}")
             
@@ -766,6 +820,20 @@ def test_zero_shot_predictor(model_path=None, mode="test", test_dataset_ids=None
                         row[f'predicted_{param_name}'] = param_value
                 
                 # Add benchmark results with hyperparameters
+                if include_optuna_benchmark and 'benchmarks' in result:
+                    # Handle split Optuna results (warmstart and standard)
+                    for optuna_type in ['optuna_warmstart', 'optuna_standard']:
+                        if optuna_type in result['benchmarks']:
+                            benchmark_data = result['benchmarks'][optuna_type]
+                            row[f'auc_{optuna_type}'] = benchmark_data['score']
+                            row[f'uplift_{optuna_type}'] = benchmark_data['uplift']
+                            row[f'uplift_{optuna_type}_pct'] = (benchmark_data['uplift'] / benchmark_data['score'] * 100) if benchmark_data['score'] > 0 else 0
+                        else:
+                            row[f'auc_{optuna_type}'] = None
+                            row[f'uplift_{optuna_type}'] = None
+                            row[f'uplift_{optuna_type}_pct'] = None
+                
+                # Add regular benchmark results
                 for benchmark_type in benchmark_types:
                     if 'benchmarks' in result and benchmark_type in result['benchmarks']:
                         benchmark_data = result['benchmarks'][benchmark_type]
@@ -885,6 +953,7 @@ if __name__ == "__main__":
             results = test_zero_shot_predictor(
                 mode="test",
                 benchmark_types=["random", "optuna"] if include_optuna_benchmark else ["random"],
+                include_optuna_benchmark=include_optuna_benchmark,
                 optuna_n_trials=optuna_n_trials
             )
         elif command == "eval-full":
@@ -892,6 +961,7 @@ if __name__ == "__main__":
                 mode="full", 
                 benchmark_types=["random", "optuna"] if include_optuna_benchmark else ["random"],
                 n_seeds=50,
+                include_optuna_benchmark=include_optuna_benchmark,
                 optuna_n_trials=optuna_n_trials
             )
         else:

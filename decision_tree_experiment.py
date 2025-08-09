@@ -74,6 +74,7 @@ import random
 import sys
 import os
 from datetime import datetime
+from tqdm import tqdm
 
 # Experiment configuration
 EXPERIMENT_ID = "dt_kb_v1"
@@ -280,15 +281,16 @@ def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, 
         # For multiple seeds, we'll store all results and aggregate at the end
         all_seed_results = [] if n_seeds > 1 else None
         
-        for dataset_id in test_dataset_ids:
-            print(f"\n🔍 Testing on dataset {dataset_id}")
+        dataset_progress = tqdm(test_dataset_ids, desc="🌳 Evaluating datasets", unit="dataset")
+        for dataset_id in dataset_progress:
             
             try:
                 # Fetch dataset
                 data, target_name, dataset_name = fetch_open_ml_data(dataset_id)
                 X, y = prepare_data(data, target_name)
-                print(f"Dataset: {dataset_name}")
-                print(f"Shape: {X.shape}")
+                
+                # Update progress bar description with current dataset
+                dataset_progress.set_description(f"🌳 Processing {dataset_name} ({X.shape[0]}x{X.shape[1]})")
                 
                 # Calculate meta-features
                 X_df = convert_to_dataframe(X)
@@ -371,7 +373,8 @@ def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, 
                     seed_optuna_warmstart_results = []
                     seed_optuna_standard_results = []
                     
-                    for seed_idx in range(n_seeds):
+                    seed_iterator = tqdm(range(n_seeds), desc=f"  🌱 Seeds for {dataset_name}", unit="seed", leave=False) if n_seeds > 1 else range(n_seeds)
+                    for seed_idx in seed_iterator:
                         current_seed = 42 + seed_idx
                         
                         # Evaluate predicted hyperparameters with current seed
@@ -482,7 +485,8 @@ def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, 
                             auc_optuna_standard = np.mean(seed_optuna_standard_results)
                             auc_optuna_standard_std = np.std(seed_optuna_standard_results)
                     
-                    print(f"✅ Zero-Shot AUC: {auc_score:.4f} ± {auc_score_std:.4f} (avg over {n_seeds} seeds)")
+                    # Show concise results for multi-seed
+                    tqdm.write(f"✅ {dataset_name}: AUC {auc_score:.4f} ± {auc_score_std:.4f} ({n_seeds} seeds)")
                     
                 else:
                     # Single seed evaluation (original logic)

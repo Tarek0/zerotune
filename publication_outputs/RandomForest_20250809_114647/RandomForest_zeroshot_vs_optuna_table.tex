@@ -1,0 +1,28 @@
+\begin{table}[htbp]
+\centering
+\caption{RandomForest: Zero-shot vs Optuna TPE}
+\label{tab:randomforest_zeroshot_vs_optuna}
+\begin{tabular}{lcccc}
+\toprule
+Dataset & Zero-shot & Optuna TPE & Uplift & P-value \\
+\midrule
+KDDCup09\_appetency & 0.816 & \textbf{0.819} & \textcolor{red}{-0.4\%} & nan \\
+PhishingWebsites & 0.968 & \textbf{0.971} & \textcolor{red}{-0.3\%} & nan \\
+SpeedDating & 0.831 & \textbf{0.843} & \textcolor{red}{-1.4\%} & nan \\
+bank-marketing & 0.860 & \textbf{0.861} & \textcolor{red}{-0.1\%} & nan \\
+blood-transfusion-service-center & 0.732 & \textbf{0.740} & \textcolor{red}{-1.1\%} & nan \\
+dresses-sales & 0.599 & \textbf{0.618} & \textcolor{red}{-3.1\%} & nan \\
+fri\_c1\_1000\_25 & \textbf{0.948} & 0.927 & \textcolor{green}{+2.3\%} & nan \\
+pc4 & \textbf{0.920} & 0.915 & \textcolor{green}{+0.5\%} & nan \\
+qsar-biodeg & 0.891 & \textbf{0.894} & \textcolor{red}{-0.3\%} & nan \\
+wdbc & \textbf{0.986} & 0.984 & \textcolor{green}{+0.2\%} & nan \\
+\bottomrule
+\end{tabular}
+\begin{tablenotes}
+\small
+\item \textbf{Bold}: Better performing method for the dataset.
+\item \underline{Underlined}: Statistically significant difference (p < 0.05).
+\item \textcolor{green}{Green}/\textcolor{red}{Red}: Positive/Negative uplift.
+\item Higher AUC scores indicate better performance.
+\end{tablenotes}
+\end{table}

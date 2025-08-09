@@ -1,0 +1,22 @@
+\begin{table}[htbp]
+\centering
+\caption{RandomForest Convergence Analysis: Performance at Trial Checkpoints}
+\label{tab:randomforest_convergence}
+\begin{tabular}{ccc}
+\toprule
+Trials & standard & warmstart \\
+\midrule
+1 & 0.848 ± 0.113 & \textbf{0.858 ± 0.137} \\
+5 & 0.857 ± 0.110 & \textbf{0.873 ± 0.118} \\
+10 & 0.857 ± 0.110 & \textbf{0.873 ± 0.118} \\
+15 & 0.857 ± 0.110 & \textbf{0.873 ± 0.118} \\
+20 & 0.857 ± 0.110 & \textbf{0.873 ± 0.118} \\
+\bottomrule
+\end{tabular}
+\begin{tablenotes}
+\small
+\item \textbf{Bold}: Best performance at the given checkpoint.
+\item Values shown as mean ± standard deviation across all datasets and seeds.
+\item Higher scores indicate better performance (AUC).
+\end{tablenotes}
+\end{table}

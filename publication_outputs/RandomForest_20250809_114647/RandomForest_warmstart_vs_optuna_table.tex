@@ -1,0 +1,28 @@
+\begin{table}[htbp]
+\centering
+\caption{RandomForest: Optuna Warm-start vs Optuna TPE}
+\label{tab:randomforest_warmstart_vs_optuna}
+\begin{tabular}{lcccc}
+\toprule
+Dataset & Optuna Warm-start & Optuna TPE & Uplift & P-value \\
+\midrule
+KDDCup09\_appetency & 0.817 & \textbf{0.819} & \textcolor{red}{-0.3\%} & nan \\
+PhishingWebsites & \textbf{0.994} & 0.971 & \textcolor{green}{+2.4\%} & nan \\
+SpeedDating & \textbf{0.859} & 0.843 & \textcolor{green}{+1.9\%} & nan \\
+bank-marketing & \textbf{0.904} & 0.861 & \textcolor{green}{+5.0\%} & nan \\
+blood-transfusion-service-center & 0.738 & \textbf{0.740} & \textcolor{red}{-0.3\%} & nan \\
+dresses-sales & 0.613 & \textbf{0.618} & \textcolor{red}{-0.8\%} & nan \\
+fri\_c1\_1000\_25 & \textbf{0.954} & 0.927 & \textcolor{green}{+3.0\%} & nan \\
+pc4 & \textbf{0.932} & 0.915 & \textcolor{green}{+1.9\%} & nan \\
+qsar-biodeg & \textbf{0.929} & 0.894 & \textcolor{green}{+4.0\%} & nan \\
+wdbc & \textbf{0.989} & 0.984 & \textcolor{green}{+0.5\%} & nan \\
+\bottomrule
+\end{tabular}
+\begin{tablenotes}
+\small
+\item \textbf{Bold}: Better performing method for the dataset.
+\item \underline{Underlined}: Statistically significant difference (p < 0.05).
+\item \textcolor{green}{Green}/\textcolor{red}{Red}: Positive/Negative uplift.
+\item Higher AUC scores indicate better performance.
+\end{tablenotes}
+\end{table}

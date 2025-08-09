@@ -1,0 +1,22 @@
+\begin{table}[htbp]
+\centering
+\caption{DecisionTree Convergence Analysis: Performance at Trial Checkpoints}
+\label{tab:decisiontree_convergence}
+\begin{tabular}{ccc}
+\toprule
+Trials & standard & warmstart \\
+\midrule
+1 & \textbf{0.773 ± 0.118} & 0.719 ± 0.152 \\
+5 & \textbf{0.827 ± 0.103} & 0.826 ± 0.109 \\
+10 & \textbf{0.841 ± 0.100} & 0.840 ± 0.103 \\
+15 & \textbf{0.849 ± 0.099} & 0.848 ± 0.100 \\
+20 & \textbf{0.852 ± 0.098} & 0.852 ± 0.099 \\
+\bottomrule
+\end{tabular}
+\begin{tablenotes}
+\small
+\item \textbf{Bold}: Best performance at the given checkpoint.
+\item Values shown as mean ± standard deviation across all datasets and seeds.
+\item Higher scores indicate better performance (AUC).
+\end{tablenotes}
+\end{table}
