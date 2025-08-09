@@ -36,42 +36,32 @@ class PublicationStatsAnalyzer:
     
     def perform_publication_comparisons(self, df_results: pd.DataFrame) -> Dict[str, pd.DataFrame]:
         """
-        Perform the 3 key statistical comparisons for publication analysis.
+        Perform statistical comparison for publication analysis.
+        
+        Only performs Zero-shot vs Random comparison.
+        For Optuna methods, convergence analysis is used instead.
         
         Args:
             df_results: DataFrame with benchmark results containing performance scores
             
         Returns:
-            Dictionary with comparison results for each of the 3 key comparisons
+            Dictionary with comparison results for Zero-shot vs Random
         """
         comparison_results = {}
         
         # Check which columns are available for analysis
         available_columns = df_results.columns.tolist()
         
-        # 1. Zero-shot vs Random comparison
+        # Zero-shot vs Random comparison
         if 'auc_predicted' in available_columns and 'auc_random' in available_columns:
-            print("🔍 Performing Zero-shot vs Random comparison...")
+            print("🔍 Performing ZT vs Random comparison...")
             comparison_results['zeroshot_vs_random'] = self._perform_paired_comparison(
                 df_results, 'auc_predicted', 'auc_random', 
-                'Zero-shot', 'Random'
+                'ZT', 'Random'
             )
         
-        # 2. Zero-shot vs Standard Optuna TPE comparison
-        if 'auc_predicted' in available_columns and 'auc_optuna_standard' in available_columns:
-            print("🔍 Performing Zero-shot vs Standard Optuna comparison...")
-            comparison_results['zeroshot_vs_standard_optuna'] = self._perform_paired_comparison(
-                df_results, 'auc_predicted', 'auc_optuna_standard',
-                'Zero-shot', 'Standard Optuna TPE'
-            )
-        
-        # 3. Warm-started vs Standard Optuna TPE comparison
-        if 'auc_optuna_warmstart' in available_columns and 'auc_optuna_standard' in available_columns:
-            print("🔍 Performing Warm-started vs Standard Optuna comparison...")
-            comparison_results['warmstart_vs_standard_optuna'] = self._perform_paired_comparison(
-                df_results, 'auc_optuna_warmstart', 'auc_optuna_standard',
-                'Warm-started Optuna TPE', 'Standard Optuna TPE'
-            )
+        # Note: Removed Optuna comparisons (zeroshot_vs_standard_optuna, warmstart_vs_standard_optuna)
+        # For Optuna methods, we focus on convergence analysis instead of per-dataset comparisons
         
         return comparison_results
     
@@ -252,12 +242,9 @@ class PublicationStatsAnalyzer:
             
             # Extract method names from comparison name
             if comparison_name == 'zeroshot_vs_random':
-                method1, method2 = 'Zero-shot', 'Random'
-            elif comparison_name == 'zeroshot_vs_standard_optuna':
-                method1, method2 = 'Zero-shot', 'Standard Optuna TPE'
-            elif comparison_name == 'warmstart_vs_standard_optuna':
-                method1, method2 = 'Warm-started Optuna TPE', 'Standard Optuna TPE'
+                method1, method2 = 'ZT', 'Random'
             else:
+                # Default fallback for any other comparison types
                 method1, method2 = 'Method1', 'Method2'
             
             # Calculate summary metrics

@@ -71,6 +71,13 @@ class LatexTableGenerator:
             )
             if convergence_table_path:
                 generated_files['convergence_analysis'] = convergence_table_path
+            
+            # 2b. Optuna convergence subtables (4-subtable format)
+            optuna_subtables_path = self.generate_optuna_convergence_subtables(
+                convergence_results['convergence_tables'], algorithm_name, output_dir
+            )
+            if optuna_subtables_path:
+                generated_files['optuna_convergence_subtables'] = optuna_subtables_path
         
         # 3. Statistical summary table
         if comparison_results:
@@ -134,14 +141,14 @@ class LatexTableGenerator:
                         
                         # Extract method scores based on comparison type
                         if comp_name == 'zeroshot_vs_random':
-                            row_data['Zero-shot'] = row.get('Zero-shot_mean', np.nan)
+                            row_data['ZT'] = row.get('ZT_mean', np.nan)
                             row_data['Random'] = row.get('Random_mean', np.nan)
-                            significance_data[(dataset_id, 'Zero-shot', 'Random')] = row.get('significant', False)
+                            significance_data[(dataset_id, 'ZT', 'Random')] = row.get('significant', False)
                             
                         elif comp_name == 'zeroshot_vs_standard_optuna':
-                            row_data['Zero-shot'] = row.get('Zero-shot_mean', np.nan)
+                            row_data['ZT'] = row.get('ZT_mean', np.nan)
                             row_data['Standard Optuna TPE'] = row.get('Standard Optuna TPE_mean', np.nan)
-                            significance_data[(dataset_id, 'Zero-shot', 'Standard Optuna TPE')] = row.get('significant', False)
+                            significance_data[(dataset_id, 'ZT', 'Standard Optuna TPE')] = row.get('significant', False)
                             
                         elif comp_name == 'warmstart_vs_standard_optuna':
                             row_data['Warm-started Optuna TPE'] = row.get('Warm-started Optuna TPE_mean', np.nan)
@@ -197,18 +204,31 @@ class LatexTableGenerator:
         print("   Creating convergence analysis table...")
         
         try:
-            if 'method_comparison' not in convergence_tables:
-                print("   ⚠️  Method comparison table not available for convergence analysis")
-                return None
-            
-            method_table = convergence_tables['method_comparison']
-            
-            if len(method_table) == 0:
-                print("   ⚠️  Empty method comparison table")
-                return None
-            
-            # Generate LaTeX table
-            latex_content = self._create_convergence_latex(method_table, algorithm_name)
+            # Try to use aggregated comparison table first (new format)
+            if 'aggregated_comparison' in convergence_tables:
+                aggregated_table = convergence_tables['aggregated_comparison']
+                if len(aggregated_table) > 0:
+                    latex_content = self._create_convergence_latex(aggregated_table, algorithm_name)
+                else:
+                    print("   ⚠️  Empty aggregated comparison table, falling back to method comparison")
+                    if 'method_comparison' not in convergence_tables:
+                        print("   ⚠️  Method comparison table not available for convergence analysis")
+                        return None
+                    method_table = convergence_tables['method_comparison']
+                    if len(method_table) == 0:
+                        print("   ⚠️  Empty method comparison table")
+                        return None
+                    latex_content = self._create_convergence_latex(method_table, algorithm_name)
+            else:
+                # Fall back to original method comparison table
+                if 'method_comparison' not in convergence_tables:
+                    print("   ⚠️  Method comparison table not available for convergence analysis")
+                    return None
+                method_table = convergence_tables['method_comparison']
+                if len(method_table) == 0:
+                    print("   ⚠️  Empty method comparison table")
+                    return None
+                latex_content = self._create_convergence_latex(method_table, algorithm_name)
             
             # Save to file
             filename = f"{algorithm_name}_convergence_analysis_table.tex"
@@ -253,9 +273,9 @@ class LatexTableGenerator:
                 
                 # Extract method names
                 if comp_name == 'zeroshot_vs_random':
-                    method1, method2 = 'Zero-shot', 'Random'
+                    method1, method2 = 'ZT', 'Random'
                 elif comp_name == 'zeroshot_vs_standard_optuna':
-                    method1, method2 = 'Zero-shot', 'Standard Optuna TPE'
+                    method1, method2 = 'ZT', 'Standard Optuna TPE'
                 elif comp_name == 'warmstart_vs_standard_optuna':
                     method1, method2 = 'Warm-started Optuna TPE', 'Standard Optuna TPE'
                 else:
@@ -309,12 +329,12 @@ class LatexTableGenerator:
         output_dir: str
     ) -> Dict[str, str]:
         """
-        Generate separate comparison tables for each method comparison.
+        Generate separate comparison table for Zero-shot vs Random.
         
-        Creates three separate LaTeX tables:
-        1. Zero-shot vs Random
-        2. Zero-shot vs Optuna TPE (Standard)
-        3. Optuna Warm-start vs Optuna TPE (Standard)
+        Creates one LaTeX table:
+        - Zero-shot vs Random
+        
+        For Optuna methods, convergence analysis is used instead of per-dataset comparisons.
         
         Args:
             comparison_results: Statistical comparison results
@@ -328,38 +348,20 @@ class LatexTableGenerator:
         
         generated_files = {}
         
-        # Define the three comparisons we want to generate
+        # Define only the Zero-shot vs Random comparison (skip Optuna comparisons)
         table_configs = [
             {
                 'comparison_key': 'zeroshot_vs_random',
-                'title': f'{algorithm_name}: Zero-shot vs Random',
-                'label': f'tab:{algorithm_name.lower()}_zeroshot_vs_random',
-                'filename': f'{algorithm_name}_zeroshot_vs_random_table.tex',
-                'method1_name': 'Zero-shot',
+                'title': f'{algorithm_name}: ZT vs Random',
+                'label': f'tab:{algorithm_name.lower()}_zt_vs_random',
+                'filename': f'{algorithm_name}_zt_vs_random_per_dataset_table.tex',
+                'method1_name': 'ZT',
                 'method2_name': 'Random',
-                'method1_col': 'Zero-shot_mean',
+                'method1_col': 'ZT_mean',
                 'method2_col': 'Random_mean'
-            },
-            {
-                'comparison_key': 'zeroshot_vs_standard_optuna',
-                'title': f'{algorithm_name}: Zero-shot vs Optuna TPE',
-                'label': f'tab:{algorithm_name.lower()}_zeroshot_vs_optuna',
-                'filename': f'{algorithm_name}_zeroshot_vs_optuna_table.tex',
-                'method1_name': 'Zero-shot',
-                'method2_name': 'Optuna TPE',
-                'method1_col': 'Zero-shot_mean',
-                'method2_col': 'Standard Optuna TPE_mean'
-            },
-            {
-                'comparison_key': 'warmstart_vs_standard_optuna',
-                'title': f'{algorithm_name}: Optuna Warm-start vs Optuna TPE',
-                'label': f'tab:{algorithm_name.lower()}_warmstart_vs_optuna',
-                'filename': f'{algorithm_name}_warmstart_vs_optuna_table.tex',
-                'method1_name': 'Optuna Warm-start',
-                'method2_name': 'Optuna TPE',
-                'method1_col': 'Warm-started Optuna TPE_mean',
-                'method2_col': 'Standard Optuna TPE_mean'
             }
+            # Note: Removed zeroshot_vs_standard_optuna and warmstart_vs_standard_optuna
+            # For Optuna methods, we only focus on convergence analysis
         ]
         
         for config in table_configs:
@@ -393,6 +395,60 @@ class LatexTableGenerator:
         
         return generated_files
 
+    def generate_optuna_convergence_subtables(
+        self, 
+        convergence_tables: Dict[str, pd.DataFrame],
+        algorithm_name: str,
+        output_dir: str,
+        checkpoints: List[int] = [1, 5, 10, 20]
+    ) -> Optional[str]:
+        """
+        Generate Optuna convergence comparison in 4-subtable format.
+        
+        Note: This method creates a template showing the format, but may have limited
+        data depending on the convergence analysis results available.
+        
+        Args:
+            convergence_tables: Convergence analysis tables
+            algorithm_name: Algorithm name for file naming
+            output_dir: Output directory
+            checkpoints: List of checkpoints to include (default: [1, 5, 10, 20])
+            
+        Returns:
+            Path to generated LaTeX file or None if generation fails
+        """
+        print("   Creating Optuna convergence subtables...")
+        
+        try:
+            if 'per_dataset_convergence' not in convergence_tables:
+                print("   ⚠️  Per-dataset convergence table not available")
+                return None
+            
+            per_dataset_table = convergence_tables['per_dataset_convergence']
+            
+            if len(per_dataset_table) == 0:
+                print("   ⚠️  Empty per-dataset convergence table")
+                return None
+            
+            # Generate LaTeX table
+            latex_content = self._create_optuna_convergence_subtables_latex(
+                per_dataset_table, algorithm_name, checkpoints
+            )
+            
+            # Save to file
+            filename = f"{algorithm_name}_optuna_convergence_per_dataset_subtables.tex"
+            filepath = os.path.join(output_dir, filename)
+            
+            with open(filepath, 'w') as f:
+                f.write(latex_content)
+            
+            print(f"   💾 Saved Optuna convergence subtables: {filepath}")
+            return filepath
+            
+        except Exception as e:
+            print(f"   ❌ Error generating Optuna convergence subtables: {str(e)}")
+            return None
+    
     def _create_main_comparison_latex(
         self, 
         df: pd.DataFrame, 
@@ -482,6 +538,73 @@ class LatexTableGenerator:
     
     def _create_convergence_latex(self, method_table: pd.DataFrame, algorithm_name: str) -> str:
         """Create LaTeX content for convergence analysis table."""
+        
+        # Use the aggregated comparison table if available, otherwise fall back to method comparison
+        if 'zt_best_pct' in method_table.columns:
+            # New aggregated format: ZT vs TPE with Best % and Sig %
+            return self._create_aggregated_convergence_latex(method_table, algorithm_name)
+        else:
+            # Original format: method comparison with mean ± std
+            return self._create_original_convergence_latex(method_table, algorithm_name)
+    
+    def _create_aggregated_convergence_latex(self, aggregated_table: pd.DataFrame, algorithm_name: str) -> str:
+        """Create LaTeX content for aggregated convergence comparison table (ZT vs TPE format)."""
+        
+        latex_lines = [
+            "\\begin{table}[htbp]",
+            "\\captionsetup{font=footnotesize, justification=raggedright, singlelinecheck=false}",
+            f"\\caption[ZT+TPE vs TPE with increasing HPO iterations]%",
+            "{Comparison of ZT+TPE and TPE on real-world datasets when TPE is allowed ",
+            "additional HPO iterations: 0, 1, 5, 10, and 20. ",
+            "At iteration 0, TPE is initialised with a random hyperparameter configuration. ",
+            "ZT+TPE represents warm-started TPE initialized with ZeroTune predictions. ",
+            "\"Best (\\%)\" indicates the percentage of datasets on which each method achieves the highest AUC, and ",
+            "\"Significant (\\%)\" shows the fraction of datasets for which that advantage ",
+            "is statistically significant (paired t-test, \\(p < 0.05\\)).}",
+            f"\\label{{table:{algorithm_name.lower()}-convergence-summary}}",
+            "\\vskip 0.1in",
+            "\\begin{center}",
+            "\\begin{small}",
+            "\\begin{sc}",
+            "\\begin{tabular}{c c c c c}",
+            "\\toprule",
+            "\\multirow{2}{*}{\\makecell{\\textbf{HPO}\\\\\\textbf{Iterations}}} ",
+            "& \\multicolumn{2}{c}{\\textbf{ZT+TPE}} ",
+            "& \\multicolumn{2}{c}{\\textbf{TPE}} \\\\",
+            "\\cmidrule(lr){2-3}\\cmidrule(lr){4-5}",
+            "& \\textbf{Best (\\%)} & \\textbf{Sig (\\%)} ",
+            "& \\textbf{Best (\\%)} & \\textbf{Sig (\\%)} \\\\",
+            "\\midrule"
+        ]
+        
+        # Data rows
+        for _, row in aggregated_table.iterrows():
+            checkpoint = int(row['checkpoint'])
+            
+            # Format percentages
+            zt_best = f"{row['zt_best_pct']:.1f}" if not pd.isna(row['zt_best_pct']) else "--"
+            zt_sig = f"{row['zt_sig_pct']:.1f}" if not pd.isna(row['zt_sig_pct']) else "--"
+            tpe_best = f"{row['tpe_best_pct']:.1f}" if not pd.isna(row['tpe_best_pct']) else "--"
+            tpe_sig = f"{row['tpe_sig_pct']:.1f}" if not pd.isna(row['tpe_sig_pct']) else "--"
+            
+            data_row = f"{checkpoint} & {zt_best} & {zt_sig} & {tpe_best} & {tpe_sig} \\\\"
+            latex_lines.append(data_row)
+        
+        # Table footer
+        latex_lines.extend([
+            "\\bottomrule",
+            "\\end{tabular}",
+            "\\end{sc}",
+            "\\end{small}",
+            "\\end{center}",
+            "\\vskip -0.1in",
+            "\\end{table}"
+        ])
+        
+        return "\n".join(latex_lines)
+    
+    def _create_original_convergence_latex(self, method_table: pd.DataFrame, algorithm_name: str) -> str:
+        """Create LaTeX content for original convergence analysis table (mean ± std format)."""
         
         # Get method names
         method_columns = [col.replace('_mean', '') for col in method_table.columns if col.endswith('_mean')]
@@ -704,3 +827,180 @@ class LatexTableGenerator:
         ])
         
         return '\n'.join(lines) 
+
+    def _create_optuna_convergence_subtables_latex(
+        self, 
+        per_dataset_table: pd.DataFrame, 
+        algorithm_name: str, 
+        checkpoints: List[int] = [1, 5, 10, 20]
+    ) -> str:
+        """Create LaTeX content for Optuna convergence subtables format."""
+        
+        # Get unique datasets
+        datasets = per_dataset_table['dataset_id'].unique()
+        
+        # Start LaTeX table
+        latex_lines = [
+            "\\begin{table}[htbp]",
+            "\\captionsetup{font=footnotesize, justification=raggedright, singlelinecheck=false}",
+            f"\\caption[Per-dataset performance of ZT+TPE vs TPE across HPO iterations]%",
+            f"{{ZT+TPE vs TPE: Performance comparison (AUC) on real-world datasets across different HPO iterations.",
+            f"AUC scores are averaged over 50 runs using different random seeds.",
+            f"ZT+TPE is initialized with zero-shot predictions.",
+            f"\\textbf{{Bold}} values represent the highest performance, and \\underline{{underlined}} values indicate statistically significant differences.",
+            f"Note: Data availability depends on trial collection during evaluation.}}",
+            f"\\label{{table:{algorithm_name.lower()}-optuna-convergence}}",
+            "\\vskip 0.1in",
+            "\\begin{center}",
+            "\\begin{small}",
+            "\\begin{sc}",
+            "",
+            "%--------------------------------",
+            "% First Row of Subtables", 
+            "%--------------------------------"
+        ]
+        
+        # Create 4 subtables (2x2 grid)
+        subtable_checkpoints = checkpoints[:4]  # Take first 4 checkpoints
+        
+        # First row (2 subtables)
+        for i in range(0, min(2, len(subtable_checkpoints))):
+            checkpoint = subtable_checkpoints[i]
+            
+            if i == 0:
+                latex_lines.append("\\begin{subtable}[t]{0.48\\textwidth}")
+            else:
+                latex_lines.append("\\hfill")
+                latex_lines.append("\\begin{subtable}[t]{0.48\\textwidth}")
+            
+            latex_lines.extend([
+                "    \\centering",
+                f"    \\caption{{ZT+TPE vs TPE ({checkpoint} iteration{'s' if checkpoint > 1 else ''})}}",
+                f"    \\label{{tab:{algorithm_name.lower()}-optuna-{checkpoint}}}",
+                "    \\begin{tabular}{lccc}",
+                "    \\toprule",
+                "    \\textbf{Dataset} & \\textbf{ZT+TPE} & \\textbf{TPE} & \\textbf{Uplift (\\%)} \\\\",
+                "    \\midrule"
+            ])
+            
+            # Add data rows for this checkpoint
+            for dataset_id in sorted(datasets):
+                dataset_data = per_dataset_table[
+                    (per_dataset_table['dataset_id'] == dataset_id) & 
+                    (per_dataset_table['checkpoint'] == checkpoint)
+                ]
+                
+                if len(dataset_data) == 0:
+                    continue
+                
+                row = dataset_data.iloc[0]
+                
+                # Get warm-started and standard Optuna scores
+                warmstart_score = row.get('warmstart_mean', 0)
+                standard_score = row.get('standard_mean', 0)
+                
+                # Calculate uplift percentage
+                if standard_score > 0:
+                    uplift_pct = ((warmstart_score - standard_score) / standard_score) * 100
+                else:
+                    uplift_pct = 0
+                
+                # Determine which is better for formatting
+                if warmstart_score > standard_score:
+                    warmstart_formatted = f"\\textbf{{{warmstart_score:.4f}}}"
+                    standard_formatted = f"{standard_score:.4f}"
+                elif standard_score > warmstart_score:
+                    warmstart_formatted = f"{warmstart_score:.4f}"
+                    standard_formatted = f"\\underline{{\\textbf{{{standard_score:.4f}}}}}"
+                else:
+                    warmstart_formatted = f"\\textbf{{{warmstart_score:.4f}}}"
+                    standard_formatted = f"\\textbf{{{standard_score:.4f}}}"
+                
+                latex_lines.append(f"    {dataset_id}    & {warmstart_formatted} & {standard_formatted} & {uplift_pct:.2f} \\\\")
+            
+            latex_lines.extend([
+                "    \\bottomrule",
+                "    \\end{tabular}",
+                "\\end{subtable}"
+            ])
+        
+        # Add spacing between rows
+        latex_lines.extend([
+            "",
+            "%--------------------------------",
+            "% Second Row of Subtables",
+            "%--------------------------------"
+        ])
+        
+        # Second row (2 more subtables)  
+        for i in range(2, min(4, len(subtable_checkpoints))):
+            checkpoint = subtable_checkpoints[i]
+            
+            if i == 2:
+                latex_lines.append("\\begin{subtable}[t]{0.48\\textwidth}")
+            else:
+                latex_lines.append("\\hfill")
+                latex_lines.append("\\begin{subtable}[t]{0.48\\textwidth}")
+            
+            latex_lines.extend([
+                "    \\centering",
+                f"    \\caption{{ZT+TPE vs TPE ({checkpoint} iteration{'s' if checkpoint > 1 else ''})}}",
+                f"    \\label{{tab:{algorithm_name.lower()}-optuna-{checkpoint}}}",
+                "    \\begin{tabular}{lccc}",
+                "    \\toprule",
+                "    \\textbf{Dataset} & \\textbf{ZT+TPE} & \\textbf{TPE} & \\textbf{Uplift (\\%)} \\\\",
+                "    \\midrule"
+            ])
+            
+            # Add data rows for this checkpoint
+            for dataset_id in sorted(datasets):
+                dataset_data = per_dataset_table[
+                    (per_dataset_table['dataset_id'] == dataset_id) & 
+                    (per_dataset_table['checkpoint'] == checkpoint)
+                ]
+                
+                if len(dataset_data) == 0:
+                    continue
+                
+                row = dataset_data.iloc[0]
+                
+                # Get scores
+                warmstart_score = row.get('warmstart_mean', 0)
+                standard_score = row.get('standard_mean', 0)
+                
+                # Calculate uplift percentage
+                if standard_score > 0:
+                    uplift_pct = ((warmstart_score - standard_score) / standard_score) * 100
+                else:
+                    uplift_pct = 0
+                
+                # Determine which is better for formatting
+                if warmstart_score > standard_score:
+                    warmstart_formatted = f"\\textbf{{{warmstart_score:.4f}}}"
+                    standard_formatted = f"{standard_score:.4f}"
+                elif standard_score > warmstart_score:
+                    warmstart_formatted = f"{warmstart_score:.4f}"
+                    standard_formatted = f"\\underline{{\\textbf{{{standard_score:.4f}}}}}"
+                else:
+                    warmstart_formatted = f"\\textbf{{{warmstart_score:.4f}}}"
+                    standard_formatted = f"\\textbf{{{standard_score:.4f}}}"
+                
+                latex_lines.append(f"    {dataset_id}    & {warmstart_formatted} & {standard_formatted} & {uplift_pct:.2f} \\\\")
+            
+            latex_lines.extend([
+                "    \\bottomrule",
+                "    \\end{tabular}",
+                "\\end{subtable}"
+            ])
+        
+        # Close the table
+        latex_lines.extend([
+            "",
+            "\\end{sc}",
+            "\\end{small}",
+            "\\end{center}",
+            "\\vskip -0.1in",
+            "\\end{table}"
+        ])
+        
+        return "\n".join(latex_lines) 

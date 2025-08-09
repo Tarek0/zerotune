@@ -124,7 +124,8 @@ class PublicationResultsProcessor:
             convergence_results = self.checkpoint_analyzer.analyze_convergence(
                 warmstart_trials_path, 
                 standard_trials_path,
-                algorithm_name
+                algorithm_name,
+                benchmark_data=df_results
             )
             
             if convergence_results:
@@ -144,32 +145,36 @@ class PublicationResultsProcessor:
         # Save results to files
         output_files = {}
         
+        # Create CSV subdirectory
+        csv_dir = os.path.join(analysis_dir, "csv_data")
+        os.makedirs(csv_dir, exist_ok=True)
+        
         # Save detailed comparison results
         for comparison_name, results_df in comparison_results.items():
             if len(results_df) > 0:
                 filename = f"{algorithm_name}_{comparison_name}_detailed_{timestamp}.csv"
-                filepath = os.path.join(analysis_dir, filename)
+                filepath = os.path.join(csv_dir, filename)
                 results_df.to_csv(filepath, index=False)
                 print(f"💾 Saved detailed results: {filepath}")
-                output_files[f'detailed_{comparison_name}'] = filename
+                output_files[f'detailed_{comparison_name}'] = os.path.join("csv_data", filename)
         
         # Save statistical summary
         if len(summary_stats) > 0:
             summary_filename = f"{algorithm_name}_statistical_summary_{timestamp}.csv"
-            summary_filepath = os.path.join(analysis_dir, summary_filename)
+            summary_filepath = os.path.join(csv_dir, summary_filename)
             summary_stats.to_csv(summary_filepath, index=False)
             print(f"💾 Saved statistical summary: {summary_filepath}")
-            output_files['statistical_summary'] = summary_filename
+            output_files['statistical_summary'] = os.path.join("csv_data", summary_filename)
         
         # Save convergence analysis results
         if convergence_results and 'convergence_tables' in convergence_results:
             for table_name, table_df in convergence_results['convergence_tables'].items():
                 if len(table_df) > 0:
                     filename = f"{algorithm_name}_convergence_{table_name}_{timestamp}.csv"
-                    filepath = os.path.join(analysis_dir, filename)
+                    filepath = os.path.join(csv_dir, filename)
                     table_df.to_csv(filepath, index=False)
                     print(f"💾 Saved convergence table: {filepath}")
-                    output_files[f'convergence_{table_name}'] = filename
+                    output_files[f'convergence_{table_name}'] = os.path.join("csv_data", filename)
         
         # Add LaTeX files to output files
         for table_type, latex_path in latex_files.items():

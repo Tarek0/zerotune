@@ -385,6 +385,9 @@ def test_zero_shot_predictor(model_path=None, mode="test", test_dataset_ids=None
         
         results = []
         
+        # Generate timestamp for trial data files (if Optuna benchmarking enabled)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S") if include_optuna_benchmark else None
+        
         dataset_progress = tqdm(test_dataset_ids, desc="🚀 Evaluating datasets", unit="dataset")
         for dataset_id in dataset_progress:
             
@@ -474,9 +477,6 @@ def test_zero_shot_predictor(model_path=None, mode="test", test_dataset_ids=None
                     if include_optuna_benchmark:
                         seed_optuna_warmstart_results = []
                         seed_optuna_standard_results = []
-                    
-                    # Generate timestamp once for all seeds
-                    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
                     
                     seed_iterator = tqdm(range(n_seeds), desc=f" 🌱 Seeds for {dataset_name}", unit="seed", leave=False)
                     for seed_idx in seed_iterator:
@@ -621,7 +621,6 @@ def test_zero_shot_predictor(model_path=None, mode="test", test_dataset_ids=None
                     for benchmark_type in benchmark_types:
                         if benchmark_type == "optuna":
                             # Run both warm-started and standard Optuna TPE
-                            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
                             
                             # Warm-started Optuna TPE
                             tqdm.write(f"\n🌱 Running warm-started Optuna TPE benchmark...")

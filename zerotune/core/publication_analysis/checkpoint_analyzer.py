@@ -8,6 +8,7 @@ different methods perform as optimization progresses.
 
 import pandas as pd
 import numpy as np
+from scipy.stats import ttest_rel
 from typing import Dict, List, Tuple, Optional, Union
 import os
 
@@ -33,7 +34,8 @@ class CheckpointAnalyzer:
         self, 
         warmstart_path: str, 
         standard_path: str,
-        algorithm_name: str = "DecisionTree"
+        algorithm_name: str = "DecisionTree",
+        benchmark_data: Optional[pd.DataFrame] = None
     ) -> Dict[str, pd.DataFrame]:
         """
         Analyze convergence behavior from trial data files.
@@ -42,6 +44,7 @@ class CheckpointAnalyzer:
             warmstart_path: Path to warmstart trial data CSV
             standard_path: Path to standard trial data CSV
             algorithm_name: Name of the algorithm for display
+            benchmark_data: Optional benchmark data for checkpoint 0 comparison
             
         Returns:
             Dictionary containing convergence analysis results
@@ -70,7 +73,7 @@ class CheckpointAnalyzer:
             return {}
         
         # Generate convergence comparison tables
-        convergence_tables = self.generate_convergence_tables(checkpoint_results)
+        convergence_tables = self.generate_convergence_tables(checkpoint_results, benchmark_data)
         
         return {
             'checkpoint_scores': checkpoint_results,
@@ -188,12 +191,13 @@ class CheckpointAnalyzer:
         print(f"✅ Extracted checkpoint scores for {len(checkpoint_data)} methods")
         return checkpoint_data
     
-    def generate_convergence_tables(self, checkpoint_data: Dict) -> Dict[str, pd.DataFrame]:
+    def generate_convergence_tables(self, checkpoint_data: Dict, benchmark_data: Optional[pd.DataFrame] = None) -> Dict[str, pd.DataFrame]:
         """
         Generate convergence comparison tables from checkpoint data.
         
         Args:
             checkpoint_data: Dictionary with checkpoint scores
+            benchmark_data: Optional benchmark data for checkpoint 0 comparison
             
         Returns:
             Dictionary with convergence tables
@@ -210,6 +214,9 @@ class CheckpointAnalyzer:
         
         # 3. Statistical summary table
         tables['statistical_summary'] = self._create_statistical_summary_table(checkpoint_data)
+        
+        # 4. Aggregated comparison table (Best % and Sig % format)
+        tables['aggregated_comparison'] = self._create_aggregated_comparison_table(checkpoint_data, benchmark_data)
         
         return tables
     
@@ -353,6 +360,142 @@ class CheckpointAnalyzer:
                         })
         
         return pd.DataFrame(summary_data)
+    
+    def _create_aggregated_comparison_table(self, checkpoint_data: Dict, benchmark_data: Optional[pd.DataFrame] = None) -> pd.DataFrame:
+        """
+        Create an aggregated comparison table with Best % and Sig % columns.
+        
+        Format matches: ZT2 vs TPE with checkpoints 0, 1, 5, 10, 20
+        - Checkpoint 0: Zero-shot vs Random (from benchmark data)
+        - Other checkpoints: Warm-started Optuna vs Standard Optuna
+        
+        Args:
+            checkpoint_data: Checkpoint scores from Optuna trials
+            benchmark_data: Benchmark results for checkpoint 0
+            
+        Returns:
+            DataFrame with aggregated comparison results
+        """
+        print("   Creating aggregated comparison table...")
+        
+        aggregated_data = []
+        
+        # Checkpoint 0: Zero-shot vs Random (from benchmark data)
+        if benchmark_data is not None and 'auc_predicted' in benchmark_data.columns and 'auc_random' in benchmark_data.columns:
+            zeroshot_scores = benchmark_data['auc_predicted'].dropna().tolist()
+            random_scores = benchmark_data['auc_random'].dropna().tolist()
+            
+            if len(zeroshot_scores) == len(random_scores) and len(zeroshot_scores) > 0:
+                # Calculate Best %
+                zeroshot_wins = sum(1 for z, r in zip(zeroshot_scores, random_scores) if z > r)
+                tpe_wins = len(zeroshot_scores) - zeroshot_wins
+                
+                zeroshot_best_pct = (zeroshot_wins / len(zeroshot_scores)) * 100
+                tpe_best_pct = (tpe_wins / len(zeroshot_scores)) * 100
+                
+                # Calculate Sig %
+                try:
+                    t_stat, p_value = ttest_rel(zeroshot_scores, random_scores)
+                    is_significant = p_value < 0.05
+                    
+                    if is_significant and np.mean(zeroshot_scores) > np.mean(random_scores):
+                        zeroshot_sig_pct = 100.0
+                        tpe_sig_pct = 0.0
+                    elif is_significant and np.mean(random_scores) > np.mean(zeroshot_scores):
+                        zeroshot_sig_pct = 0.0
+                        tpe_sig_pct = 100.0
+                    else:
+                        zeroshot_sig_pct = 0.0
+                        tpe_sig_pct = 0.0
+                except:
+                    zeroshot_sig_pct = 0.0
+                    tpe_sig_pct = 0.0
+                
+                aggregated_data.append({
+                    'checkpoint': 0,
+                    'zt_best_pct': zeroshot_best_pct,
+                    'zt_sig_pct': zeroshot_sig_pct,
+                    'tpe_best_pct': tpe_best_pct,
+                    'tpe_sig_pct': tpe_sig_pct
+                })
+        
+        # Checkpoints 1, 5, 10, 20: Warm-started vs Standard Optuna
+        for checkpoint in [1, 5, 10, 20]:  # Skip 15 to match your example
+            if checkpoint not in self.checkpoints:
+                continue
+                
+            warmstart_scores = []
+            standard_scores = []
+            
+            # Collect per-dataset scores
+            if 'warmstart' in checkpoint_data and 'standard' in checkpoint_data:
+                # Get all datasets that have both warmstart and standard data
+                common_datasets = set(checkpoint_data['warmstart'].keys()) & set(checkpoint_data['standard'].keys())
+                
+                for dataset_id in common_datasets:
+                    # Collect scores across all seeds for this dataset
+                    warmstart_dataset_scores = []
+                    standard_dataset_scores = []
+                    
+                    for seed in checkpoint_data['warmstart'][dataset_id]:
+                        score = checkpoint_data['warmstart'][dataset_id][seed].get(checkpoint, np.nan)
+                        if not np.isnan(score):
+                            warmstart_dataset_scores.append(score)
+                    
+                    for seed in checkpoint_data['standard'][dataset_id]:
+                        score = checkpoint_data['standard'][dataset_id][seed].get(checkpoint, np.nan)
+                        if not np.isnan(score):
+                            standard_dataset_scores.append(score)
+                    
+                    # Take mean across seeds for this dataset
+                    if warmstart_dataset_scores and standard_dataset_scores:
+                        warmstart_scores.append(np.mean(warmstart_dataset_scores))
+                        standard_scores.append(np.mean(standard_dataset_scores))
+            
+            if len(warmstart_scores) == len(standard_scores) and len(warmstart_scores) > 0:
+                # Calculate Best %
+                zt_wins = sum(1 for w, s in zip(warmstart_scores, standard_scores) if w > s)
+                tpe_wins = len(warmstart_scores) - zt_wins
+                
+                zt_best_pct = (zt_wins / len(warmstart_scores)) * 100
+                tpe_best_pct = (tpe_wins / len(warmstart_scores)) * 100
+                
+                # Calculate Sig %
+                try:
+                    t_stat, p_value = ttest_rel(warmstart_scores, standard_scores)
+                    is_significant = p_value < 0.05
+                    
+                    if is_significant and np.mean(warmstart_scores) > np.mean(standard_scores):
+                        zt_sig_pct = 100.0
+                        tpe_sig_pct = 0.0
+                    elif is_significant and np.mean(standard_scores) > np.mean(warmstart_scores):
+                        zt_sig_pct = 0.0
+                        tpe_sig_pct = 100.0
+                    else:
+                        zt_sig_pct = 0.0
+                        tpe_sig_pct = 0.0
+                except:
+                    zt_sig_pct = 0.0
+                    tpe_sig_pct = 0.0
+                
+                aggregated_data.append({
+                    'checkpoint': checkpoint,
+                    'zt_best_pct': zt_best_pct,
+                    'zt_sig_pct': zt_sig_pct,
+                    'tpe_best_pct': tpe_best_pct,
+                    'tpe_sig_pct': tpe_sig_pct
+                })
+            else:
+                # No data available for this checkpoint
+                aggregated_data.append({
+                    'checkpoint': checkpoint,
+                    'zt_best_pct': np.nan,
+                    'zt_sig_pct': np.nan,
+                    'tpe_best_pct': np.nan,
+                    'tpe_sig_pct': np.nan
+                })
+        
+        return pd.DataFrame(aggregated_data)
     
     def print_convergence_summary(self, convergence_results: Dict):
         """Print a summary of the convergence analysis."""
