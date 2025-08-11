@@ -103,6 +103,15 @@ class PublicationStatsAnalyzer:
                 scores1 = self._extract_scores(row[column1])
                 scores2 = self._extract_scores(row[column2])
                 
+                # Check if we have individual seed scores available (better than summary stats)
+                scores1_col = f"{column1}_scores"
+                scores2_col = f"{column2}_scores"
+                
+                if scores1_col in row.index and scores2_col in row.index and not pd.isna(row[scores1_col]) and not pd.isna(row[scores2_col]):
+                    # Use individual seed scores if available
+                    scores1 = self._extract_scores(row[scores1_col])
+                    scores2 = self._extract_scores(row[scores2_col])
+                
                 if scores1 is None or scores2 is None:
                     continue
                 
@@ -115,9 +124,48 @@ class PublicationStatsAnalyzer:
                 mean1 = np.mean(scores1)
                 mean2 = np.mean(scores2)
                 
-                # Perform paired t-test
-                if len(scores1) > 1:
+                # Perform statistical test
+                if len(scores1) > 1 and len(scores2) > 1:
+                    # We have raw scores - use paired t-test
                     t_stat, p_value = ttest_rel(scores1, scores2)
+                elif len(scores1) == 1 and len(scores2) == 1:
+                    # We have single aggregated scores - check if we have std and n_seeds for proper t-test
+                    std1_col = None
+                    std2_col = None
+                    n_seeds_col = None
+                    
+                    # Look for standard deviation columns
+                    for col in row.index:
+                        # For column1 (e.g., 'auc_predicted' -> 'auc_predicted_std')
+                        if col == f"{column1}_std":
+                            std1_col = col
+                        # For column2 (e.g., 'auc_random' -> 'auc_random_std')  
+                        elif col == f"{column2}_std":
+                            std2_col = col
+                        elif 'n_seeds' in col.lower():
+                            n_seeds_col = col
+                    
+                    # If we have std and n_seeds, perform two-sample t-test with summary statistics
+                    if std1_col and std2_col and n_seeds_col and not pd.isna(row[std1_col]) and not pd.isna(row[std2_col]):
+                        try:
+                            from scipy.stats import ttest_ind_from_stats
+                            
+                            std1 = row[std1_col]
+                            std2 = row[std2_col] 
+                            n_seeds = int(row[n_seeds_col])
+                            
+                            # Perform two-sample t-test with summary statistics (Welch's t-test)
+                            t_stat, p_value = ttest_ind_from_stats(
+                                mean1=mean1, std1=std1, nobs1=n_seeds,
+                                mean2=mean2, std2=std2, nobs2=n_seeds,
+                                equal_var=False  # Welch's t-test (unequal variances)
+                            )
+                        except Exception as e:
+                            print(f"⚠️  Error in summary statistics t-test for dataset {row.get('dataset_id', i)}: {str(e)}")
+                            t_stat, p_value = np.nan, np.nan
+                    else:
+                        # Single value case - no statistical test possible
+                        t_stat, p_value = np.nan, np.nan
                 else:
                     # Single value case - no statistical test possible
                     t_stat, p_value = np.nan, np.nan

@@ -290,7 +290,7 @@ def generate_random_hyperparameters(dataset_size=1000, n_features=10, random_sta
         'max_features': max_features_val
     }
 
-def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, n_seeds=1, include_optuna_benchmark=False, optuna_n_trials=20):
+def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, n_seeds=1, include_optuna_benchmark=False, optuna_n_trials=20, test_dataset_ids=None):
     """
     Test the zero-shot predictor on validation datasets
     
@@ -319,7 +319,7 @@ def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, 
         print(f"❌ Error loading predictor: {e}")
         return None
     
-    test_datasets = VALIDATION_DATASET_COLLECTION
+    test_datasets = VALIDATION_DATASET_COLLECTION if test_dataset_ids is None else test_dataset_ids
     
     if n_seeds > 1:
         print(f"\nStarting zero-shot evaluation with {n_seeds} random seeds...")
@@ -527,10 +527,12 @@ def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, 
                     'dataset_name': dataset_name,
                     'auc_predicted': auc_predicted_mean,
                     'auc_predicted_std': auc_predicted_std,
+                    'auc_predicted_scores': seed_predicted_results,  # Add individual seed scores
                     'n_samples': X.shape[0],
                     'n_features': X.shape[1],
                     'auc_random': auc_random_mean,
                     'auc_random_std': auc_random_std,
+                    'auc_random_scores': seed_random_results,  # Add individual seed scores
                     'uplift_random': uplift,
                     'uplift_random_pct': uplift_pct,
                     'n_seeds': n_seeds
@@ -684,17 +686,22 @@ def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, 
     return results
 
 def show_usage():
-    """Show usage information."""
-    print("\nRandom Forest Knowledge Base & Zero-Shot HPO Experiment")
-    print("=" * 60)
-    print("Commands:")
-    print("  python random_forest_experiment.py test         # Build test KB (2 datasets, 50 iter)")
-    print("  python random_forest_experiment.py full         # Build full KB (15 datasets, 50 iter)")
-    print("  python random_forest_experiment.py build-kb     # Build knowledge base only")
-    print("  python random_forest_experiment.py train-test   # Train predictor (test mode)")  
-    print("  python random_forest_experiment.py train-full   # Train predictor (full mode)")
-    print("  python random_forest_experiment.py eval-test    # Evaluate predictor (test mode)")
-    print("  python random_forest_experiment.py eval-full    # Evaluate predictor (full mode)")
+    print("Usage:")
+    print("  python random_forest_experiment.py test            # Build TEST knowledge base")
+    print("  python random_forest_experiment.py full           # Build FULL knowledge base")
+    print("  python random_forest_experiment.py train-test     # Train predictor on TEST KB")
+    print("  python random_forest_experiment.py train-full     # Train predictor on FULL KB")
+    print("  python random_forest_experiment.py eval-test      # Quick test: full model, 2 datasets")
+    print("  python random_forest_experiment.py eval-full      # Full evaluation: all 10 datasets")
+    print("")
+    print("Optional flags:")
+    print("  --optuna                    # Include Optuna TPE benchmarking")
+    print("  --optuna_trials N           # Number of Optuna trials (default: 20)")
+    print("  --seeds N                   # Number of random seeds (default: 50)")
+    print("")
+    print("Examples:")
+    print("  python random_forest_experiment.py eval-full --optuna --optuna_trials 25")
+    print("  python random_forest_experiment.py eval-test --optuna --seeds 3       # Quick testing")
     print("  python random_forest_experiment.py --help       # Show this help")
 
 if __name__ == "__main__":
@@ -709,6 +716,7 @@ if __name__ == "__main__":
     # Parse optional flags
     include_optuna_benchmark = "--optuna" in sys.argv
     optuna_n_trials = 20  # Default value
+    n_seeds = 50  # Default value
     
     if "--optuna_trials" in sys.argv:
         try:
@@ -718,6 +726,15 @@ if __name__ == "__main__":
                 print(f"Using optuna_n_trials = {optuna_n_trials}")
         except (ValueError, IndexError):
             print("Warning: Invalid --optuna_trials value, using default (20)")
+    
+    if "--seeds" in sys.argv:
+        try:
+            idx = sys.argv.index("--seeds")
+            if idx + 1 < len(sys.argv):
+                n_seeds = int(sys.argv[idx + 1])
+                print(f"Using n_seeds = {n_seeds}")
+        except (ValueError, IndexError):
+            print("Warning: Invalid --seeds value, using default (50)")
     
     try:
         if command == "test":
@@ -730,14 +747,16 @@ if __name__ == "__main__":
             train_predictor(mode="full")
         elif command == "eval-test":
             test_zero_shot_predictor(
-                mode="test", 
+                mode="full",  # Use full trained model (more robust)
+                test_dataset_ids=[917, 1049],  # Only test on first 2 datasets for speed
+                n_seeds=n_seeds,
                 include_optuna_benchmark=include_optuna_benchmark,
                 optuna_n_trials=optuna_n_trials
             )
         elif command == "eval-full":
             test_zero_shot_predictor(
                 mode="full", 
-                n_seeds=50,
+                n_seeds=n_seeds,
                 include_optuna_benchmark=include_optuna_benchmark,
                 optuna_n_trials=optuna_n_trials
             )

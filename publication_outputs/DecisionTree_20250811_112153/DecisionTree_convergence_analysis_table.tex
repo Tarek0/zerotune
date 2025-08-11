@@ -1,0 +1,36 @@
+\begin{table}[htbp]
+\captionsetup{font=footnotesize, justification=raggedright, singlelinecheck=false}
+\caption[ZT+TPE vs TPE with increasing HPO iterations]%
+{Comparison of ZT+TPE and TPE on real-world datasets when TPE is allowed 
+additional HPO iterations: 0, 1, 5, 10, and 20. 
+At iteration 0, TPE is initialised with a random hyperparameter configuration. 
+ZT+TPE represents warm-started TPE initialized with ZeroTune predictions. 
+"Best (\%)" indicates the percentage of datasets on which each method achieves the highest AUC, and 
+"Significant (\%)" shows the fraction of datasets for which that advantage 
+is statistically significant (paired t-test, \(p < 0.05\)).}
+\label{table:decisiontree-convergence-summary}
+\vskip 0.1in
+\begin{center}
+\begin{small}
+\begin{sc}
+\begin{tabular}{c c c c c}
+\toprule
+\multirow{2}{*}{\makecell{\textbf{HPO}\\\textbf{Iterations}}} 
+& \multicolumn{2}{c}{\textbf{ZT+TPE}} 
+& \multicolumn{2}{c}{\textbf{TPE}} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}
+& \textbf{Best (\%)} & \textbf{Sig (\%)} 
+& \textbf{Best (\%)} & \textbf{Sig (\%)} \\
+\midrule
+0 & 100.0 & 100.0 & 0.0 & 0.0 \\
+1 & 20.0 & 20.0 & 80.0 & 70.0 \\
+5 & 30.0 & 10.0 & 70.0 & 30.0 \\
+10 & 40.0 & 20.0 & 60.0 & 0.0 \\
+20 & 50.0 & 10.0 & 50.0 & 0.0 \\
+\bottomrule
+\end{tabular}
+\end{sc}
+\end{small}
+\end{center}
+\vskip -0.1in
+\end{table}

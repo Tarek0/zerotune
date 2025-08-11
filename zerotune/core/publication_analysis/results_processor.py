@@ -41,7 +41,7 @@ class PublicationResultsProcessor:
         self.checkpoints = checkpoints
         self.stats_analyzer = PublicationStatsAnalyzer(alpha=alpha)
         self.checkpoint_analyzer = CheckpointAnalyzer(checkpoints=checkpoints)
-        self.latex_generator = LatexTableGenerator(decimal_places=3, significance_alpha=alpha)
+        self.latex_generator = LatexTableGenerator(decimal_places=4, significance_alpha=alpha)
         
         # Ensure output directory exists
         os.makedirs(self.output_dir, exist_ok=True)

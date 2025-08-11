@@ -22,12 +22,12 @@ class LatexTableGenerator:
     - Professional table styling
     """
     
-    def __init__(self, decimal_places: int = 3, significance_alpha: float = 0.05):
+    def __init__(self, decimal_places: int = 4, significance_alpha: float = 0.05):
         """
         Initialize the LaTeX table generator.
         
         Args:
-            decimal_places: Number of decimal places for scores (default: 3)
+            decimal_places: Number of decimal places for scores (default: 4)
             significance_alpha: Significance threshold for underlining (default: 0.05)
         """
         self.decimal_places = decimal_places
@@ -64,7 +64,7 @@ class LatexTableGenerator:
             )
             generated_files.update(separate_tables)
         
-        # 2. Convergence analysis table
+        # 2. Convergence analysis table (ZT+TPE vs TPE)
         if convergence_results and 'convergence_tables' in convergence_results:
             convergence_table_path = self.generate_convergence_table(
                 convergence_results['convergence_tables'], algorithm_name, output_dir
@@ -72,9 +72,23 @@ class LatexTableGenerator:
             if convergence_table_path:
                 generated_files['convergence_analysis'] = convergence_table_path
             
-            # 2b. Optuna convergence subtables (4-subtable format)
-            optuna_subtables_path = self.generate_optuna_convergence_subtables(
+            # 2b. ZT vs TPE convergence analysis table (NEW)
+            zt_vs_tpe_table_path = self.generate_zt_vs_tpe_convergence_table(
                 convergence_results['convergence_tables'], algorithm_name, output_dir
+            )
+            if zt_vs_tpe_table_path:
+                generated_files['zt_vs_tpe_convergence'] = zt_vs_tpe_table_path
+            
+            # 2c. ZT vs TPE per-dataset convergence table (NEW)
+            zt_vs_tpe_per_dataset_path = self.generate_zt_vs_tpe_per_dataset_table(
+                convergence_results, algorithm_name, output_dir
+            )
+            if zt_vs_tpe_per_dataset_path:
+                generated_files['zt_vs_tpe_per_dataset'] = zt_vs_tpe_per_dataset_path
+            
+            # 2d. Optuna convergence subtables (4-subtable format)
+            optuna_subtables_path = self.generate_optuna_convergence_subtables(
+                convergence_results, algorithm_name, output_dir
             )
             if optuna_subtables_path:
                 generated_files['optuna_convergence_subtables'] = optuna_subtables_path
@@ -244,6 +258,103 @@ class LatexTableGenerator:
             print(f"   ❌ Error generating convergence table: {str(e)}")
             return None
     
+    def generate_zt_vs_tpe_convergence_table(
+        self, 
+        convergence_tables: Dict[str, pd.DataFrame],
+        algorithm_name: str,
+        output_dir: str
+    ) -> Optional[str]:
+        """
+        Generate ZT vs TPE convergence analysis table.
+        
+        Args:
+            convergence_tables: Convergence analysis tables
+            algorithm_name: Algorithm name for file naming
+            output_dir: Output directory
+            
+        Returns:
+            Path to generated LaTeX file or None if generation fails
+        """
+        print("   Creating ZT vs TPE convergence analysis table...")
+        
+        try:
+            # Use the new zt_vs_tpe_comparison table
+            if 'zt_vs_tpe_comparison' in convergence_tables:
+                zt_vs_tpe_table = convergence_tables['zt_vs_tpe_comparison']
+                if len(zt_vs_tpe_table) > 0:
+                    latex_content = self._create_zt_vs_tpe_convergence_latex(zt_vs_tpe_table, algorithm_name)
+                else:
+                    print("   ⚠️  Empty ZT vs TPE comparison table")
+                    return None
+            else:
+                print("   ⚠️  ZT vs TPE comparison table not available")
+                return None
+            
+            # Save to file
+            filename = f"{algorithm_name}_zt_vs_tpe_convergence_table.tex"
+            filepath = os.path.join(output_dir, filename)
+            
+            with open(filepath, 'w', encoding='utf-8') as f:
+                f.write(latex_content)
+            
+            print(f"   💾 Saved ZT vs TPE convergence table: {filepath}")
+            return filepath
+            
+        except Exception as e:
+            print(f"   ❌ Error generating ZT vs TPE convergence table: {str(e)}")
+            return None
+    
+    def generate_zt_vs_tpe_per_dataset_table(
+        self, 
+        convergence_results: Dict,
+        algorithm_name: str,
+        output_dir: str
+    ) -> Optional[str]:
+        """
+        Generate ZT vs TPE per-dataset convergence analysis table.
+        
+        Args:
+            convergence_results: Full convergence analysis results
+            algorithm_name: Algorithm name for file naming
+            output_dir: Output directory
+            
+        Returns:
+            Path to generated LaTeX file or None if generation fails
+        """
+        print("   Creating ZT vs TPE per-dataset convergence table...")
+        
+        try:
+            # We need both the benchmark data and the checkpoint data
+            if 'checkpoint_scores' not in convergence_results:
+                print("   ⚠️  No checkpoint scores available for per-dataset ZT vs TPE analysis")
+                return None
+                
+            checkpoint_scores = convergence_results['checkpoint_scores']
+            
+            # Get benchmark data from the convergence results (it should have been passed through)
+            benchmark_data = convergence_results.get('benchmark_data', None)
+            if benchmark_data is None:
+                print("   ⚠️  No benchmark data available for ZT scores")
+                return None
+            
+            latex_content = self._create_zt_vs_tpe_per_dataset_latex(
+                checkpoint_scores, benchmark_data, algorithm_name
+            )
+            
+            # Save to file
+            filename = f"{algorithm_name}_zt_vs_tpe_per_dataset_subtables.tex"
+            filepath = os.path.join(output_dir, filename)
+            
+            with open(filepath, 'w', encoding='utf-8') as f:
+                f.write(latex_content)
+            
+            print(f"   💾 Saved ZT vs TPE per-dataset table: {filepath}")
+            return filepath
+            
+        except Exception as e:
+            print(f"   ❌ Error generating ZT vs TPE per-dataset table: {str(e)}")
+            return None
+    
     def generate_statistical_summary_table(
         self, 
         comparison_results: Dict[str, pd.DataFrame],
@@ -378,7 +489,7 @@ class LatexTableGenerator:
             
             try:
                 latex_content = self._create_individual_comparison_latex(
-                    results_df, config
+                    results_df, config, algorithm_name
                 )
                 
                 # Save to file
@@ -397,21 +508,18 @@ class LatexTableGenerator:
 
     def generate_optuna_convergence_subtables(
         self, 
-        convergence_tables: Dict[str, pd.DataFrame],
-        algorithm_name: str,
+        convergence_results: Dict, 
+        algorithm_name: str, 
         output_dir: str,
         checkpoints: List[int] = [1, 5, 10, 20]
     ) -> Optional[str]:
         """
-        Generate Optuna convergence comparison in 4-subtable format.
-        
-        Note: This method creates a template showing the format, but may have limited
-        data depending on the convergence analysis results available.
+        Generate Optuna convergence subtables in 4-subtable format.
         
         Args:
-            convergence_tables: Convergence analysis tables
-            algorithm_name: Algorithm name for file naming
-            output_dir: Output directory
+            convergence_results: Dictionary of convergence analysis tables
+            algorithm_name: Name of the algorithm for file naming
+            output_dir: Output directory for LaTeX files
             checkpoints: List of checkpoints to include (default: [1, 5, 10, 20])
             
         Returns:
@@ -420,6 +528,13 @@ class LatexTableGenerator:
         print("   Creating Optuna convergence subtables...")
         
         try:
+            if 'convergence_tables' not in convergence_results:
+                print("   ⚠️  Convergence tables not available")
+                return None
+                
+            convergence_tables = convergence_results['convergence_tables']
+            checkpoint_scores = convergence_results.get('checkpoint_scores', {})
+            
             if 'per_dataset_convergence' not in convergence_tables:
                 print("   ⚠️  Per-dataset convergence table not available")
                 return None
@@ -430,9 +545,9 @@ class LatexTableGenerator:
                 print("   ⚠️  Empty per-dataset convergence table")
                 return None
             
-            # Generate LaTeX table
+            # Generate LaTeX table with access to raw checkpoint data for proper t-tests
             latex_content = self._create_optuna_convergence_subtables_latex(
-                per_dataset_table, algorithm_name, checkpoints
+                per_dataset_table, algorithm_name, checkpoints, checkpoint_scores
             )
             
             # Save to file
@@ -742,7 +857,8 @@ class LatexTableGenerator:
     def _create_individual_comparison_latex(
         self, 
         results_df: pd.DataFrame, 
-        config: Dict[str, str]
+        config: Dict[str, str],
+        algorithm_name: str = ""
     ) -> str:
         """
         Create LaTeX content for an individual comparison table.
@@ -750,34 +866,46 @@ class LatexTableGenerator:
         Args:
             results_df: DataFrame with comparison results
             config: Configuration dictionary with table settings
+            algorithm_name: Name of the ML algorithm for caption
             
         Returns:
             LaTeX table content as string
         """
         lines = []
         
-        # Table header
+        # Update caption for ZT vs Random with algorithm name
+        if 'ZT vs Random' in config['title']:
+            algorithm_display = f"{algorithm_name} " if algorithm_name else ""
+            caption_text = f"[{algorithm_display}ZT vs Random search: AUC performance comparison]%\n{{{algorithm_display}ZT vs Random search: Performance comparison (AUC). \nAUC scores are averaged over 50 runs. \n\\textbf{{Bold}} values represent the highest performance, and \\underline{{underlined}} values represent significant differences.}}"
+            label_text = f"table:{algorithm_name.lower()}-baseline-random" if algorithm_name else "table:baseline-random"
+        else:
+            caption_text = config['title']
+            label_text = config['label']
+        
+        # Table header with new format
         lines.extend([
             "\\begin{table}[htbp]",
-            "\\centering",
-            f"\\caption{{{config['title']}}}",
-            f"\\label{{{config['label']}}}",
-            "\\begin{tabular}{lcccc}",
+            f"\\caption{caption_text}",
+            f"\\label{{{label_text}}}",
+            "\\vskip 0.1in",
+            "\\begin{center}",
+            "\\begin{small}",
+            "\\begin{sc}",
+            "\\begin{tabular}{l r r r}",
             "\\toprule",
-            f"Dataset & {config['method1_name']} & {config['method2_name']} & Uplift & P-value \\\\",
+            f"\\textbf{{Dataset}} & \\textbf{{{config['method1_name']}}} & \\textbf{{\\makecell{{{config['method2_name']}\\\\Search}}}} & \\textbf{{Uplift (\\%)}} \\\\",
             "\\midrule"
         ])
         
-        # Sort by dataset name for consistency
-        sorted_df = results_df.sort_values('dataset_name')
+        # Sort by dataset_id for consistency
+        sorted_df = results_df.sort_values('dataset_id')
         
         # Table rows
         for _, row in sorted_df.iterrows():
-            dataset_name = str(row['dataset_name']).replace('_', '\\_')
+            dataset_id = str(int(row['dataset_id']))  # Show dataset ID instead of name
             method1_score = row[config['method1_col']]
             method2_score = row[config['method2_col']]
             uplift = row.get('uplift_pct', 0.0)
-            p_value = row.get('p_value', 1.0)
             is_significant = row.get('significant', False)
             
             # Format scores
@@ -794,45 +922,230 @@ class LatexTableGenerator:
                 if is_significant:
                     method2_str = f"\\underline{{{method2_str}}}"
             
-            # Format uplift with sign
-            uplift_str = f"{uplift:+.1f}\\%"
-            if uplift > 0:
-                uplift_str = f"\\textcolor{{green}}{{{uplift_str}}}"
-            elif uplift < 0:
-                uplift_str = f"\\textcolor{{red}}{{{uplift_str}}}"
+            # Format uplift as simple number with 2 decimal places
+            uplift_str = f"{uplift:.2f}"
             
-            # Format p-value
-            if p_value < 0.001:
-                p_str = "< 0.001"
-            else:
-                p_str = f"{p_value:.3f}"
-            
-            if is_significant:
-                p_str = f"\\textbf{{{p_str}}}"
-            
-            lines.append(f"{dataset_name} & {method1_str} & {method2_str} & {uplift_str} & {p_str} \\\\")
+            lines.append(f"{dataset_id}    & {method1_str} & {method2_str} & {uplift_str} \\\\")
         
-        # Table footer
+        # Table footer with new format
         lines.extend([
             "\\bottomrule",
             "\\end{tabular}",
-            "\\begin{tablenotes}",
-            "\\small",
-            "\\item \\textbf{Bold}: Better performing method for the dataset.",
-            "\\item \\underline{Underlined}: Statistically significant difference (p < 0.05).",
-            "\\item \\textcolor{green}{Green}/\\textcolor{red}{Red}: Positive/Negative uplift.",
-            "\\item Higher AUC scores indicate better performance.",
-            "\\end{tablenotes}",
+            "\\end{sc}",
+            "\\end{small}",
+            "\\end{center}",
+            "\\vskip -0.1in",
             "\\end{table}"
         ])
         
         return '\n'.join(lines) 
 
+    def _create_zt_vs_tpe_convergence_latex(self, comparison_table: pd.DataFrame, algorithm_name: str) -> str:
+        """Create LaTeX content for ZT vs TPE convergence analysis table."""
+        
+        lines = [
+            "\\begin{table}[htbp]",
+            "\\captionsetup{font=footnotesize, justification=raggedright, singlelinecheck=false}",
+            f"\\caption[ZT vs TPE with increasing HPO iterations]%",
+            f"{{Comparison of ZT and TPE on real-world datasets when TPE is allowed ",
+            "additional HPO iterations: 0, 1, 5, 10, and 20. ",
+            "At iteration 0, TPE is initialised with a random hyperparameter configuration. ",
+            "ZT represents zero-shot predictions from ZeroTune. ",
+            '"Best (\\%)" indicates the percentage of datasets on which each method achieves the highest AUC, and ',
+            '"Significant (\\%)" shows the fraction of datasets for which that advantage ',
+            "is statistically significant (paired t-test, \\(p < 0.05\\)).}",
+            f"\\label{{table:{algorithm_name.lower()}-zt-vs-tpe-convergence-summary}}",
+            "\\vskip 0.1in",
+            "\\begin{center}",
+            "\\begin{small}",
+            "\\begin{sc}",
+            "\\begin{tabular}{c c c c c}",
+            "\\toprule",
+            "\\multirow{2}{*}{\\makecell{\\textbf{HPO}\\\\\\textbf{Iterations}}} ",
+            "& \\multicolumn{2}{c}{\\textbf{ZT}} ",
+            "& \\multicolumn{2}{c}{\\textbf{TPE}} \\\\",
+            "\\cmidrule(lr){2-3}\\cmidrule(lr){4-5}",
+            "& \\textbf{Best (\\%)} & \\textbf{Sig (\\%)} ",
+            "& \\textbf{Best (\\%)} & \\textbf{Sig (\\%)} \\\\",
+            "\\midrule"
+        ]
+        
+        # Add data rows
+        for _, row in comparison_table.iterrows():
+            checkpoint = int(row['checkpoint'])
+            zt_best = row['zt_best_pct']
+            zt_sig = row['zt_sig_pct']
+            tpe_best = row['tpe_best_pct']
+            tpe_sig = row['tpe_sig_pct']
+            
+            # Format percentages with 1 decimal place to match the original format
+            zt_best_str = f"{zt_best:.1f}" if not pd.isna(zt_best) else "—"
+            zt_sig_str = f"{zt_sig:.1f}" if not pd.isna(zt_sig) else "—"
+            tpe_best_str = f"{tpe_best:.1f}" if not pd.isna(tpe_best) else "—"
+            tpe_sig_str = f"{tpe_sig:.1f}" if not pd.isna(tpe_sig) else "—"
+            
+            lines.append(f"{checkpoint} & {zt_best_str} & {zt_sig_str} & {tpe_best_str} & {tpe_sig_str} \\\\")
+        
+        # Table footer
+        lines.extend([
+            "\\bottomrule",
+            "\\end{tabular}",
+            "\\end{sc}",
+            "\\end{small}",
+            "\\end{center}",
+            "\\vskip -0.1in",
+            "\\end{table}"
+        ])
+        
+        return '\n'.join(lines)
+
+    def _create_zt_vs_tpe_per_dataset_latex(
+        self, 
+        checkpoint_data: Dict[str, Dict[int, Dict[str, float]]], 
+        benchmark_data: pd.DataFrame, 
+        algorithm_name: str
+    ) -> str:
+        """Create LaTeX content for ZT vs TPE per-dataset convergence analysis table."""
+        
+        # Get datasets from benchmark data
+        datasets = sorted(benchmark_data['dataset_id'].tolist())
+        checkpoints = [1, 5, 10, 20]  # Standard checkpoints for per-dataset analysis
+        
+        # Start LaTeX table
+        latex_lines = [
+            "\\begin{table}[htbp]",
+            "\\captionsetup{font=footnotesize, justification=raggedright, singlelinecheck=false}",
+            f"\\caption[Per-dataset performance of ZT vs TPE across HPO iterations]%",
+            f"{{ZT vs TPE: Performance comparison (AUC) on real-world datasets across different HPO iterations.",
+            f"AUC scores are averaged over 50 runs using different random seeds.",
+            f"At iteration 0, ZT represents zero-shot predictions. At other iterations, TPE represents standard Optuna TPE.",
+            f"\\textbf{{Bold}} values represent the highest performance, and \\underline{{underlined}} values indicate statistically significant differences.",
+            f"Note: Data availability depends on trial collection during evaluation.}}",
+            f"\\label{{table:{algorithm_name.lower()}-zt-vs-tpe-per-dataset}}",
+            "\\vskip 0.1in",
+            "\\begin{center}",
+            "\\begin{small}",
+            "\\begin{sc}",
+            "",
+            "%--------------------------------",
+            "% First Row of Subtables", 
+            "%--------------------------------"
+        ]
+        
+        # Create 4 subtables (2x2 grid) for checkpoints 1, 5, 10, 20
+        for row in range(2):  # 2 rows
+            if row == 1:
+                latex_lines.extend([
+                    "",
+                    "%--------------------------------",
+                    "% Second Row of Subtables",
+                    "%--------------------------------"
+                ])
+            
+            for col in range(2):  # 2 columns per row
+                checkpoint_idx = row * 2 + col
+                if checkpoint_idx >= len(checkpoints):
+                    break
+                    
+                checkpoint = checkpoints[checkpoint_idx]
+                
+                if col == 0:
+                    latex_lines.append("\\begin{subtable}[t]{0.48\\textwidth}")
+                else:
+                    latex_lines.append("\\hfill")
+                    latex_lines.append("\\begin{subtable}[t]{0.48\\textwidth}")
+                
+                latex_lines.extend([
+                    "    \\centering",
+                    f"    \\caption{{ZT vs TPE ({checkpoint} iteration{'s' if checkpoint > 1 else ''})}}",
+                    f"    \\label{{tab:{algorithm_name.lower()}-zt-vs-tpe-{checkpoint}}}",
+                    "    \\begin{tabular}{lccc}",
+                    "    \\toprule",
+                    "    \\textbf{Dataset} & \\textbf{ZT} & \\textbf{TPE} & \\textbf{Uplift (\\%)} \\\\",
+                    "    \\midrule"
+                ])
+                
+                # Add data rows for this checkpoint
+                for dataset_id in datasets:
+                    # Get ZT score (from benchmark data - same for all checkpoints)
+                    zt_row = benchmark_data[benchmark_data['dataset_id'] == dataset_id]
+                    if len(zt_row) == 0:
+                        continue
+                    zt_score = zt_row['auc_predicted'].iloc[0]
+                    
+                    # Get TPE score at this checkpoint (from standard Optuna trials)
+                    tpe_score = None
+                    if ('standard' in checkpoint_data and 
+                        dataset_id in checkpoint_data['standard']):
+                        # Collect scores across all seeds for this dataset at this checkpoint
+                        checkpoint_scores = []
+                        for seed in checkpoint_data['standard'][dataset_id]:
+                            if checkpoint in checkpoint_data['standard'][dataset_id][seed]:
+                                score = checkpoint_data['standard'][dataset_id][seed][checkpoint]
+                                if not pd.isna(score):
+                                    checkpoint_scores.append(score)
+                        
+                        if checkpoint_scores:
+                            tpe_score = np.mean(checkpoint_scores)
+                    
+                    if tpe_score is None:
+                        # Skip this dataset if no TPE data available
+                        continue
+                    
+                    # Determine which is better and if difference is statistically significant
+                    diff = abs(zt_score - tpe_score)
+                    is_significant = diff > 0.01  # Simple threshold since we can't do proper t-test between ZT (single) and TPE (multiple seeds)
+                    
+                    if zt_score > tpe_score:
+                        if is_significant:
+                            zt_formatted = f"\\underline{{\\textbf{{{zt_score:.4f}}}}}"  # ZT wins significantly
+                            tpe_formatted = f"{tpe_score:.4f}"
+                        else:
+                            zt_formatted = f"\\textbf{{{zt_score:.4f}}}"  # ZT wins but not significantly
+                            tpe_formatted = f"{tpe_score:.4f}"
+                    elif tpe_score > zt_score:
+                        zt_formatted = f"{zt_score:.4f}"
+                        if is_significant:
+                            tpe_formatted = f"\\underline{{\\textbf{{{tpe_score:.4f}}}}}"  # TPE wins significantly
+                        else:
+                            tpe_formatted = f"\\textbf{{{tpe_score:.4f}}}"  # TPE wins but not significantly
+                    else:
+                        # Tie case
+                        zt_formatted = f"\\textbf{{{zt_score:.4f}}}"
+                        tpe_formatted = f"\\textbf{{{tpe_score:.4f}}}"
+                    
+                    # Calculate uplift percentage
+                    if tpe_score > 0:
+                        uplift_pct = ((zt_score - tpe_score) / tpe_score) * 100
+                    else:
+                        uplift_pct = 0
+                    
+                    latex_lines.append(f"    {dataset_id}    & {zt_formatted} & {tpe_formatted} & {uplift_pct:.2f} \\\\")
+                
+                latex_lines.extend([
+                    "    \\bottomrule",
+                    "    \\end{tabular}",
+                    "\\end{subtable}"
+                ])
+        
+        # Close the table
+        latex_lines.extend([
+            "",
+            "\\end{sc}",
+            "\\end{small}",
+            "\\end{center}",
+            "\\vskip -0.1in",
+            "\\end{table}"
+        ])
+        
+        return "\n".join(latex_lines) 
+
     def _create_optuna_convergence_subtables_latex(
         self, 
         per_dataset_table: pd.DataFrame, 
         algorithm_name: str, 
-        checkpoints: List[int] = [1, 5, 10, 20]
+        checkpoints: List[int] = [1, 5, 10, 20],
+        checkpoint_scores: Dict[int, Dict[str, float]] = {}
     ) -> str:
         """Create LaTeX content for Optuna convergence subtables format."""
         
@@ -899,22 +1212,67 @@ class LatexTableGenerator:
                 warmstart_score = row.get('warmstart_mean', 0)
                 standard_score = row.get('standard_mean', 0)
                 
+                # Determine which is better and if difference is statistically significant
+                # Use proper paired t-test with raw seed data if available
+                diff = abs(warmstart_score - standard_score)
+                is_significant = False
+                
+                if checkpoint_scores and 'warmstart' in checkpoint_scores and 'standard' in checkpoint_scores:
+                    # Extract raw scores for this dataset and checkpoint
+                    warmstart_raw = []
+                    standard_raw = []
+                    
+                    if (dataset_id in checkpoint_scores['warmstart'] and 
+                        dataset_id in checkpoint_scores['standard']):
+                        
+                        # Get scores across all seeds for this dataset at this checkpoint
+                        for seed in checkpoint_scores['warmstart'][dataset_id]:
+                            if checkpoint in checkpoint_scores['warmstart'][dataset_id][seed]:
+                                warmstart_raw.append(checkpoint_scores['warmstart'][dataset_id][seed][checkpoint])
+                        
+                        for seed in checkpoint_scores['standard'][dataset_id]:
+                            if checkpoint in checkpoint_scores['standard'][dataset_id][seed]:
+                                standard_raw.append(checkpoint_scores['standard'][dataset_id][seed][checkpoint])
+                        
+                        # Perform paired t-test if we have enough data points
+                        if len(warmstart_raw) == len(standard_raw) and len(warmstart_raw) >= 2:
+                            try:
+                                from scipy.stats import ttest_rel
+                                t_stat, p_value = ttest_rel(warmstart_raw, standard_raw)
+                                is_significant = p_value < 0.05
+                            except:
+                                # Fallback to simple difference threshold
+                                is_significant = diff > 0.01
+                        else:
+                            # Fallback to simple difference threshold
+                            is_significant = diff > 0.01
+                else:
+                    # Fallback to simple difference threshold if no raw data
+                    is_significant = diff > 0.01
+                
+                if warmstart_score > standard_score:
+                    if is_significant:
+                        warmstart_formatted = f"\\underline{{\\textbf{{{warmstart_score:.4f}}}}}"  # ZT+TPE wins significantly
+                        standard_formatted = f"{standard_score:.4f}"
+                    else:
+                        warmstart_formatted = f"\\textbf{{{warmstart_score:.4f}}}"  # ZT+TPE wins but not significantly
+                        standard_formatted = f"{standard_score:.4f}"
+                elif standard_score > warmstart_score:
+                    warmstart_formatted = f"{warmstart_score:.4f}"
+                    if is_significant:
+                        standard_formatted = f"\\underline{{\\textbf{{{standard_score:.4f}}}}}"  # TPE wins significantly
+                    else:
+                        standard_formatted = f"\\textbf{{{standard_score:.4f}}}"  # TPE wins but not significantly
+                else:
+                    # Tie case
+                    warmstart_formatted = f"\\textbf{{{warmstart_score:.4f}}}"
+                    standard_formatted = f"\\textbf{{{standard_score:.4f}}}"
+                
                 # Calculate uplift percentage
                 if standard_score > 0:
                     uplift_pct = ((warmstart_score - standard_score) / standard_score) * 100
                 else:
                     uplift_pct = 0
-                
-                # Determine which is better for formatting
-                if warmstart_score > standard_score:
-                    warmstart_formatted = f"\\textbf{{{warmstart_score:.4f}}}"
-                    standard_formatted = f"{standard_score:.4f}"
-                elif standard_score > warmstart_score:
-                    warmstart_formatted = f"{warmstart_score:.4f}"
-                    standard_formatted = f"\\underline{{\\textbf{{{standard_score:.4f}}}}}"
-                else:
-                    warmstart_formatted = f"\\textbf{{{warmstart_score:.4f}}}"
-                    standard_formatted = f"\\textbf{{{standard_score:.4f}}}"
                 
                 latex_lines.append(f"    {dataset_id}    & {warmstart_formatted} & {standard_formatted} & {uplift_pct:.2f} \\\\")
             
@@ -968,22 +1326,66 @@ class LatexTableGenerator:
                 warmstart_score = row.get('warmstart_mean', 0)
                 standard_score = row.get('standard_mean', 0)
                 
+                # Determine which is better and if difference is statistically significant
+                diff = abs(warmstart_score - standard_score)
+                is_significant = False
+                
+                if checkpoint_scores and 'warmstart' in checkpoint_scores and 'standard' in checkpoint_scores:
+                    # Extract raw scores for this dataset and checkpoint
+                    warmstart_raw = []
+                    standard_raw = []
+                    
+                    if (dataset_id in checkpoint_scores['warmstart'] and 
+                        dataset_id in checkpoint_scores['standard']):
+                        
+                        # Get scores across all seeds for this dataset at this checkpoint
+                        for seed in checkpoint_scores['warmstart'][dataset_id]:
+                            if checkpoint in checkpoint_scores['warmstart'][dataset_id][seed]:
+                                warmstart_raw.append(checkpoint_scores['warmstart'][dataset_id][seed][checkpoint])
+                        
+                        for seed in checkpoint_scores['standard'][dataset_id]:
+                            if checkpoint in checkpoint_scores['standard'][dataset_id][seed]:
+                                standard_raw.append(checkpoint_scores['standard'][dataset_id][seed][checkpoint])
+                        
+                        # Perform paired t-test if we have enough data points
+                        if len(warmstart_raw) == len(standard_raw) and len(warmstart_raw) >= 2:
+                            try:
+                                from scipy.stats import ttest_rel
+                                t_stat, p_value = ttest_rel(warmstart_raw, standard_raw)
+                                is_significant = p_value < 0.05
+                            except:
+                                # Fallback to simple difference threshold
+                                is_significant = diff > 0.01
+                        else:
+                            # Fallback to simple difference threshold
+                            is_significant = diff > 0.01
+                else:
+                    # Fallback to simple difference threshold if no raw data
+                    is_significant = diff > 0.01
+                
+                if warmstart_score > standard_score:
+                    if is_significant:
+                        warmstart_formatted = f"\\underline{{\\textbf{{{warmstart_score:.4f}}}}}"  # ZT+TPE wins significantly
+                        standard_formatted = f"{standard_score:.4f}"
+                    else:
+                        warmstart_formatted = f"\\textbf{{{warmstart_score:.4f}}}"  # ZT+TPE wins but not significantly
+                        standard_formatted = f"{standard_score:.4f}"
+                elif standard_score > warmstart_score:
+                    warmstart_formatted = f"{warmstart_score:.4f}"
+                    if is_significant:
+                        standard_formatted = f"\\underline{{\\textbf{{{standard_score:.4f}}}}}"  # TPE wins significantly
+                    else:
+                        standard_formatted = f"\\textbf{{{standard_score:.4f}}}"  # TPE wins but not significantly
+                else:
+                    # Tie case
+                    warmstart_formatted = f"\\textbf{{{warmstart_score:.4f}}}"
+                    standard_formatted = f"\\textbf{{{standard_score:.4f}}}"
+                
                 # Calculate uplift percentage
                 if standard_score > 0:
                     uplift_pct = ((warmstart_score - standard_score) / standard_score) * 100
                 else:
                     uplift_pct = 0
-                
-                # Determine which is better for formatting
-                if warmstart_score > standard_score:
-                    warmstart_formatted = f"\\textbf{{{warmstart_score:.4f}}}"
-                    standard_formatted = f"{standard_score:.4f}"
-                elif standard_score > warmstart_score:
-                    warmstart_formatted = f"{warmstart_score:.4f}"
-                    standard_formatted = f"\\underline{{\\textbf{{{standard_score:.4f}}}}}"
-                else:
-                    warmstart_formatted = f"\\textbf{{{warmstart_score:.4f}}}"
-                    standard_formatted = f"\\textbf{{{standard_score:.4f}}}"
                 
                 latex_lines.append(f"    {dataset_id}    & {warmstart_formatted} & {standard_formatted} & {uplift_pct:.2f} \\\\")
             

@@ -222,8 +222,19 @@ def train_zero_shot_predictor(mode="test", top_k_trials=1):
 
 
 
-def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, n_seeds=1, include_optuna_benchmark=False, optuna_n_trials=20):
-    """Test zero-shot predictor on unseen datasets."""
+def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, n_seeds=1, include_optuna_benchmark=False, optuna_n_trials=20, test_dataset_ids=None):
+    """
+    Test the zero-shot predictor on validation datasets
+    
+    Args:
+        mode: "test" or "full" - determines which model to load
+        model_path: Optional path to specific model file
+        save_benchmark: Whether to save benchmark results
+        n_seeds: Number of random seeds to use for evaluation
+        include_optuna_benchmark: Whether to include Optuna TPE benchmarking
+        optuna_n_trials: Number of trials for Optuna optimization
+        test_dataset_ids: Optional list of specific dataset IDs to test on
+    """
     
     print("Decision Tree Knowledge Base Builder for Zero-Shot HPO")
     print("=" * 70)
@@ -241,7 +252,8 @@ def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, 
     print(f"Using trained model: {model_path}")
     
     # Use all test datasets
-    test_dataset_ids = TEST_DATASET_COLLECTION
+    if test_dataset_ids is None:
+        test_dataset_ids = TEST_DATASET_COLLECTION
     print(f"Testing on {len(test_dataset_ids)} unseen datasets: {test_dataset_ids}")
     print("These datasets were NOT used in knowledge base building to avoid data leakage")
     
@@ -635,6 +647,8 @@ def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, 
                     'dataset_id': dataset_id,
                     'dataset_name': dataset_name,
                     'auc_predicted': auc_score,
+                    'auc_predicted_std': auc_score_std,
+                    'auc_predicted_scores': seed_results,  # Add individual seed scores
                     'n_samples': X.shape[0],
                     'n_features': X.shape[1],
                     'error': None
@@ -647,8 +661,11 @@ def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, 
                 if save_benchmark:
                     result.update({
                         'auc_random': auc_random,
+                        'auc_random_std': auc_random_std,
+                        'auc_random_scores': seed_random_results,  # Add individual seed scores
                         'uplift_random': uplift_random,
-                        'uplift_random_pct': uplift_random_pct
+                        'uplift_random_pct': uplift_random_pct,
+                        'n_seeds': len(seed_results)  # Add number of seeds for statistical analysis
                     })
                     
                     # Add random hyperparameters for debugging
@@ -816,31 +833,27 @@ def main():
         print("  python decision_tree_experiment.py full           # Build full KB (15 datasets)")
         print("  python decision_tree_experiment.py train-test     # Train predictor from test KB")
         print("  python decision_tree_experiment.py train-full     # Train predictor from full KB")
-        print("  python decision_tree_experiment.py train-full --top_k_trials 3  # Use top-3 trials per dataset (default: 1)")
-        print("  python decision_tree_experiment.py eval-test      # Evaluate test predictor")
-        print("  python decision_tree_experiment.py eval-full      # Evaluate full predictor")
-        print("  python decision_tree_experiment.py eval-full --optuna # Include Optuna TPE benchmarks")
-        print("  python decision_tree_experiment.py eval-full --optuna --optuna_trials 30  # Custom trial count (default: 20)")
+        print("  python decision_tree_experiment.py eval-test      # Quick test: full model, 2 datasets")
+        print("  python decision_tree_experiment.py eval-full      # Full evaluation: all 10 datasets")
+        print("")
+        print("Optional flags:")
+        print("  --optuna                    # Include Optuna TPE benchmarking")
+        print("  --optuna_trials N           # Number of Optuna trials (default: 20)")
+        print("  --seeds N                   # Number of random seeds (default: 50)")
+        print("")
+        print("Examples:")
+        print("  python decision_tree_experiment.py eval-full --optuna --optuna_trials 25")
+        print("  python decision_tree_experiment.py eval-test --optuna --seeds 3       # Quick testing")
         return
     
     command = sys.argv[1]
     
-    # Parse optional arguments
-    top_k_trials = 1  # default (proven best approach: single best HPO setting per dataset)
-    include_optuna_benchmark = False
-    optuna_n_trials = 20  # default
+    # Parse optional flags
+    include_optuna_benchmark = "--optuna" in sys.argv
+    optuna_n_trials = 20  # Default value
+    n_seeds = 50  # Default value
     
-    if "--top_k_trials" in sys.argv:
-        try:
-            idx = sys.argv.index("--top_k_trials")
-            if idx + 1 < len(sys.argv):
-                top_k_trials = int(sys.argv[idx + 1])
-                print(f"Using top_k_trials = {top_k_trials}")
-        except (ValueError, IndexError):
-            print("Warning: Invalid --top_k_trials value, using default (1)")
-    
-    if "--optuna" in sys.argv:
-        include_optuna_benchmark = True
+    if include_optuna_benchmark:
         print("Including Optuna TPE benchmarking")
     
     if "--optuna_trials" in sys.argv:
@@ -851,6 +864,15 @@ def main():
                 print(f"Using optuna_n_trials = {optuna_n_trials}")
         except (ValueError, IndexError):
             print("Warning: Invalid --optuna_trials value, using default (20)")
+    
+    if "--seeds" in sys.argv:
+        try:
+            idx = sys.argv.index("--seeds")
+            if idx + 1 < len(sys.argv):
+                n_seeds = int(sys.argv[idx + 1])
+                print(f"Using n_seeds = {n_seeds}")
+        except (ValueError, IndexError):
+            print("Warning: Invalid --seeds value, using default (50)")
     
     try:
         if command == "test":
@@ -863,14 +885,16 @@ def main():
             train_zero_shot_predictor(mode="full", top_k_trials=top_k_trials)
         elif command == "eval-test":
             test_zero_shot_predictor(
-                mode="test", 
+                mode="full",  # Use full trained model (more robust)
+                test_dataset_ids=[917, 1049],  # Only test on first 2 datasets for speed
+                n_seeds=n_seeds,
                 include_optuna_benchmark=include_optuna_benchmark,
                 optuna_n_trials=optuna_n_trials
             )
         elif command == "eval-full":
             test_zero_shot_predictor(
                 mode="full", 
-                n_seeds=50,
+                n_seeds=n_seeds,
                 include_optuna_benchmark=include_optuna_benchmark,
                 optuna_n_trials=optuna_n_trials
             )

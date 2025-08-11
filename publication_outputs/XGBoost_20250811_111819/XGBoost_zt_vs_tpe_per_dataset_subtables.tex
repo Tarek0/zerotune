@@ -1,0 +1,113 @@
+\begin{table}[htbp]
+\captionsetup{font=footnotesize, justification=raggedright, singlelinecheck=false}
+\caption[Per-dataset performance of ZT vs TPE across HPO iterations]%
+{ZT vs TPE: Performance comparison (AUC) on real-world datasets across different HPO iterations.
+AUC scores are averaged over 50 runs using different random seeds.
+At iteration 0, ZT represents zero-shot predictions. At other iterations, TPE represents standard Optuna TPE.
+\textbf{Bold} values represent the highest performance, and \underline{underlined} values indicate statistically significant differences.
+Note: Data availability depends on trial collection during evaluation.}
+\label{table:xgboost-zt-vs-tpe-per-dataset}
+\vskip 0.1in
+\begin{center}
+\begin{small}
+\begin{sc}
+
+%--------------------------------
+% First Row of Subtables
+%--------------------------------
+\begin{subtable}[t]{0.48\textwidth}
+    \centering
+    \caption{ZT vs TPE (1 iteration)}
+    \label{tab:xgboost-zt-vs-tpe-1}
+    \begin{tabular}{lccc}
+    \toprule
+    \textbf{Dataset} & \textbf{ZT} & \textbf{TPE} & \textbf{Uplift (\%)} \\
+    \midrule
+    917    & \underline{\textbf{0.9727}} & 0.9619 & 1.13 \\
+    1049    & \underline{\textbf{0.9468}} & 0.9328 & 1.50 \\
+    1111    & \underline{\textbf{0.8078}} & 0.7936 & 1.78 \\
+    1464    & 0.6934 & \textbf{0.6961} & -0.40 \\
+    1494    & \textbf{0.9307} & 0.9228 & 0.86 \\
+    1510    & \textbf{0.9937} & 0.9907 & 0.30 \\
+    1558    & \textbf{0.9031} & 0.8944 & 0.97 \\
+    4534    & \textbf{0.9970} & 0.9943 & 0.27 \\
+    23381    & 0.5628 & \underline{\textbf{0.5803}} & -3.01 \\
+    40536    & \textbf{0.8677} & 0.8591 & 1.00 \\
+    \bottomrule
+    \end{tabular}
+\end{subtable}
+\hfill
+\begin{subtable}[t]{0.48\textwidth}
+    \centering
+    \caption{ZT vs TPE (5 iterations)}
+    \label{tab:xgboost-zt-vs-tpe-5}
+    \begin{tabular}{lccc}
+    \toprule
+    \textbf{Dataset} & \textbf{ZT} & \textbf{TPE} & \textbf{Uplift (\%)} \\
+    \midrule
+    917    & \textbf{0.9727} & 0.9703 & 0.25 \\
+    1049    & \textbf{0.9468} & 0.9420 & 0.51 \\
+    1111    & 0.8078 & \underline{\textbf{0.8218}} & -1.71 \\
+    1464    & 0.6934 & \underline{\textbf{0.7298}} & -4.99 \\
+    1494    & 0.9307 & \textbf{0.9312} & -0.06 \\
+    1510    & \textbf{0.9937} & 0.9932 & 0.05 \\
+    1558    & 0.9031 & \textbf{0.9055} & -0.27 \\
+    4534    & \textbf{0.9970} & 0.9961 & 0.08 \\
+    23381    & 0.5628 & \underline{\textbf{0.6081}} & -7.45 \\
+    40536    & 0.8677 & \textbf{0.8704} & -0.31 \\
+    \bottomrule
+    \end{tabular}
+\end{subtable}
+
+%--------------------------------
+% Second Row of Subtables
+%--------------------------------
+\begin{subtable}[t]{0.48\textwidth}
+    \centering
+    \caption{ZT vs TPE (10 iterations)}
+    \label{tab:xgboost-zt-vs-tpe-10}
+    \begin{tabular}{lccc}
+    \toprule
+    \textbf{Dataset} & \textbf{ZT} & \textbf{TPE} & \textbf{Uplift (\%)} \\
+    \midrule
+    917    & \textbf{0.9727} & 0.9718 & 0.09 \\
+    1049    & \textbf{0.9468} & 0.9444 & 0.25 \\
+    1111    & 0.8078 & \underline{\textbf{0.8270}} & -2.33 \\
+    1464    & 0.6934 & \underline{\textbf{0.7380}} & -6.05 \\
+    1494    & 0.9307 & \textbf{0.9338} & -0.34 \\
+    1510    & 0.9937 & \textbf{0.9938} & -0.02 \\
+    1558    & 0.9031 & \textbf{0.9077} & -0.51 \\
+    4534    & \textbf{0.9970} & 0.9963 & 0.07 \\
+    23381    & 0.5628 & \underline{\textbf{0.6254}} & -10.01 \\
+    40536    & 0.8677 & \textbf{0.8725} & -0.54 \\
+    \bottomrule
+    \end{tabular}
+\end{subtable}
+\hfill
+\begin{subtable}[t]{0.48\textwidth}
+    \centering
+    \caption{ZT vs TPE (20 iterations)}
+    \label{tab:xgboost-zt-vs-tpe-20}
+    \begin{tabular}{lccc}
+    \toprule
+    \textbf{Dataset} & \textbf{ZT} & \textbf{TPE} & \textbf{Uplift (\%)} \\
+    \midrule
+    917    & 0.9727 & \textbf{0.9740} & -0.13 \\
+    1049    & 0.9468 & \textbf{0.9473} & -0.06 \\
+    1111    & 0.8078 & \underline{\textbf{0.8336}} & -3.10 \\
+    1464    & 0.6934 & \underline{\textbf{0.7519}} & -7.79 \\
+    1494    & 0.9307 & \textbf{0.9357} & -0.54 \\
+    1510    & 0.9937 & \textbf{0.9944} & -0.08 \\
+    1558    & 0.9031 & \textbf{0.9103} & -0.80 \\
+    4534    & \textbf{0.9970} & 0.9965 & 0.05 \\
+    23381    & 0.5628 & \underline{\textbf{0.6459}} & -12.87 \\
+    40536    & 0.8677 & \textbf{0.8742} & -0.74 \\
+    \bottomrule
+    \end{tabular}
+\end{subtable}
+
+\end{sc}
+\end{small}
+\end{center}
+\vskip -0.1in
+\end{table}
