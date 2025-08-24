@@ -171,10 +171,10 @@ class CheckpointAnalyzer:
             if seed not in checkpoint_data[method][dataset_id]:
                 checkpoint_data[method][dataset_id][seed] = {}
             
-            # Extract scores at each checkpoint
+            # Extract scores at each checkpoint (for LaTeX tables)
             for checkpoint in self.checkpoints:
                 # Get trials up to this checkpoint
-                trials_up_to_checkpoint = group_df[group_df['number'] < checkpoint]
+                trials_up_to_checkpoint = group_df[group_df['number'] <= checkpoint]
                 
                 if len(trials_up_to_checkpoint) == 0:
                     # No trials available at this checkpoint

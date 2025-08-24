@@ -119,14 +119,19 @@ def predict_openml(dataset_id: int, model_type: str, zero_shot: bool) -> int:
         # Optimize hyperparameters
         if zero_shot:
             print("Predicting hyperparameters using zero-shot mode...")
+            # For zero-shot mode, we would use ZeroTunePredictor instead
+            print("Zero-shot mode not implemented in CLI yet. Use ZeroTunePredictor class directly.")
+            return 1
         else:
             print("Optimizing hyperparameters using iterative mode...")
-        best_params, best_score, model = zt.optimize(
-            X, y,
-            n_iter=10 if not zero_shot else 0,
-            verbose=True,
-            optimize=not zero_shot
-        )
+            best_params, best_score = zt._optimize_single_dataset(
+                X, y,
+                n_iter=10,
+                random_state=42,
+                verbose=True,
+                dataset_id=dataset_id,
+                dataset_name=dataset_name
+            )
         
         # Display results
         print("\n=== Best Hyperparameters ===")
@@ -160,14 +165,18 @@ def predict_custom(data_path: str, target: str, model_type: str, zero_shot: bool
         # Optimize hyperparameters
         if zero_shot:
             print("Predicting hyperparameters using zero-shot mode...")
+            # For zero-shot mode, we would use ZeroTunePredictor instead
+            print("Zero-shot mode not implemented in CLI yet. Use ZeroTunePredictor class directly.")
+            return 1
         else:
             print("Optimizing hyperparameters using iterative mode...")
-        best_params, best_score, model = zt.optimize(
-            X, y,
-            n_iter=10 if not zero_shot else 0,
-            verbose=True,
-            optimize=not zero_shot
-        )
+            best_params, best_score = zt._optimize_single_dataset(
+                X, y,
+                n_iter=10,
+                random_state=42,
+                verbose=True,
+                dataset_name=dataset_name
+            )
         
         # Display results
         print("\n=== Best Hyperparameters ===")
@@ -195,23 +204,29 @@ def train_model(dataset_id: int, model_type: str, zero_shot: bool) -> int:
         # Optimize hyperparameters
         if zero_shot:
             print("Predicting hyperparameters using zero-shot mode...")
+            # For zero-shot mode, we would use ZeroTunePredictor instead
+            print("Zero-shot mode not implemented in CLI yet. Use ZeroTunePredictor class directly.")
+            return 1
         else:
             print("Optimizing hyperparameters using iterative mode...")
-        best_params, best_score, model = zt.optimize(
-            X, y,
-            n_iter=10 if not zero_shot else 0,
-            verbose=True,
-            optimize=not zero_shot
-        )
+            best_params, best_score = zt._optimize_single_dataset(
+                X, y,
+                n_iter=10,
+                random_state=42,
+                verbose=True,
+                dataset_id=dataset_id,
+                dataset_name=dataset_name
+            )
         
         # Train final model
         print("\nTraining final model with best hyperparameters...")
-        model.fit(X, y)
+        from zerotune.core.optimization import train_final_model
+        model = train_final_model(zt.model_class, best_params, X, y)
         
         # Evaluate model
-        y_pred = model.predict(X)
-        accuracy = (y_pred == y).mean()
-        print(f"\nTraining accuracy: {accuracy:.4f}")
+        from zerotune.core.optimization import calculate_performance_score
+        score = calculate_performance_score(model, X, y, metric=zt.model_config["metric"])
+        print(f"\nTraining score: {score:.4f}")
         
         return 0
     except Exception as e:

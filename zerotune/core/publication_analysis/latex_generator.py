@@ -668,8 +668,8 @@ class LatexTableGenerator:
         latex_lines = [
             "\\begin{table}[htbp]",
             "\\captionsetup{font=footnotesize, justification=raggedright, singlelinecheck=false}",
-            f"\\caption[ZT+TPE vs TPE with increasing HPO iterations]%",
-            "{Comparison of ZT+TPE and TPE on real-world datasets when TPE is allowed ",
+            f"\\caption[{algorithm_name}: ZT+TPE vs TPE with increasing HPO iterations]%",
+            f"{{{algorithm_name}: Comparison of ZT+TPE and TPE on real-world datasets when TPE is allowed ",
             "additional HPO iterations: 0, 1, 5, 10, and 20. ",
             "At iteration 0, TPE is initialised with a random hyperparameter configuration. ",
             "ZT+TPE represents warm-started TPE initialized with ZeroTune predictions. ",
@@ -946,8 +946,8 @@ class LatexTableGenerator:
         lines = [
             "\\begin{table}[htbp]",
             "\\captionsetup{font=footnotesize, justification=raggedright, singlelinecheck=false}",
-            f"\\caption[ZT vs TPE with increasing HPO iterations]%",
-            f"{{Comparison of ZT and TPE on real-world datasets when TPE is allowed ",
+            f"\\caption[{algorithm_name}: ZT vs TPE with increasing HPO iterations]%",
+            f"{{{algorithm_name}: Comparison of ZT and TPE on real-world datasets when TPE is allowed ",
             "additional HPO iterations: 0, 1, 5, 10, and 20. ",
             "At iteration 0, TPE is initialised with a random hyperparameter configuration. ",
             "ZT represents zero-shot predictions from ZeroTune. ",
@@ -1015,8 +1015,8 @@ class LatexTableGenerator:
         latex_lines = [
             "\\begin{table}[htbp]",
             "\\captionsetup{font=footnotesize, justification=raggedright, singlelinecheck=false}",
-            f"\\caption[Per-dataset performance of ZT vs TPE across HPO iterations]%",
-            f"{{ZT vs TPE: Performance comparison (AUC) on real-world datasets across different HPO iterations.",
+            f"\\caption[{algorithm_name}: Per-dataset performance of ZT vs TPE across HPO iterations]%",
+            f"{{{algorithm_name}: ZT vs TPE: Performance comparison (AUC) on real-world datasets across different HPO iterations.",
             f"AUC scores are averaged over 50 runs using different random seeds.",
             f"At iteration 0, ZT represents zero-shot predictions. At other iterations, TPE represents standard Optuna TPE.",
             f"\\textbf{{Bold}} values represent the highest performance, and \\underline{{underlined}} values indicate statistically significant differences.",
@@ -1057,7 +1057,7 @@ class LatexTableGenerator:
                 
                 latex_lines.extend([
                     "    \\centering",
-                    f"    \\caption{{ZT vs TPE ({checkpoint} iteration{'s' if checkpoint > 1 else ''})}}",
+                    f"    \\caption{{{algorithm_name}: ZT vs TPE ({checkpoint} iteration{'s' if checkpoint > 1 else ''})}}",
                     f"    \\label{{tab:{algorithm_name.lower()}-zt-vs-tpe-{checkpoint}}}",
                     "    \\begin{tabular}{lccc}",
                     "    \\toprule",
@@ -1156,8 +1156,8 @@ class LatexTableGenerator:
         latex_lines = [
             "\\begin{table}[htbp]",
             "\\captionsetup{font=footnotesize, justification=raggedright, singlelinecheck=false}",
-            f"\\caption[Per-dataset performance of ZT+TPE vs TPE across HPO iterations]%",
-            f"{{ZT+TPE vs TPE: Performance comparison (AUC) on real-world datasets across different HPO iterations.",
+            f"\\caption[{algorithm_name}: Per-dataset performance of ZT+TPE vs TPE across HPO iterations]%",
+            f"{{{algorithm_name}: ZT+TPE vs TPE: Performance comparison (AUC) on real-world datasets across different HPO iterations.",
             f"AUC scores are averaged over 50 runs using different random seeds.",
             f"ZT+TPE is initialized with zero-shot predictions.",
             f"\\textbf{{Bold}} values represent the highest performance, and \\underline{{underlined}} values indicate statistically significant differences.",

@@ -16,6 +16,7 @@ Features:
 - Statistical comparisons with paired t-tests
 - Convergence analysis at checkpoints (1, 5, 10, 15, 20 trials)
 - LaTeX table generation with proper formatting
+- Publication-ready interactive charts (HTML format)
 - Timestamped output directories for organization
 - Algorithm-agnostic analysis pipeline
 """
@@ -62,19 +63,23 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Decision Tree analysis with full convergence analysis
+  # Full analysis with LaTeX tables and interactive charts (default)
   python publication_analysis.py DecisionTree \\
     --csv benchmarks/benchmark_results_dt_kb_v1_full_optuna_20250808_143536.csv \\
     --warmstart benchmarks/optuna_trials_warmstart_dt_kb_v1_full_optuna_20250808_142352.csv \\
     --standard benchmarks/optuna_trials_standard_dt_kb_v1_full_optuna_20250808_142352.csv
 
-  # Random Forest analysis (basic comparisons only)
-  python publication_analysis.py RandomForest \\
-    --csv benchmarks/benchmark_results_rf_kb_v1_full_optuna_20250808_*.csv \\
-    --no-convergence
-
-  # Auto-detect latest files for Decision Tree
+  # Auto-detect latest files (recommended)
   python publication_analysis.py DecisionTree --auto-detect
+
+  # Generate charts only for specific datasets
+  python publication_analysis.py DecisionTree --auto-detect --chart-datasets 917 1049 1111
+
+  # Skip charts (LaTeX only)
+  python publication_analysis.py RandomForest --auto-detect --no-charts
+
+  # Skip convergence analysis (basic comparisons only)
+  python publication_analysis.py RandomForest --auto-detect --no-convergence
         """
     )
     
@@ -124,6 +129,19 @@ Examples:
         '--no-latex',
         action='store_true',
         help='Skip LaTeX table generation'
+    )
+    
+    parser.add_argument(
+        '--no-charts',
+        action='store_true',
+        help='Skip publication chart generation'
+    )
+    
+    parser.add_argument(
+        '--chart-datasets',
+        nargs='+',
+        type=int,
+        help='Generate charts only for specific dataset IDs (default: all datasets)'
     )
     
     parser.add_argument(
@@ -201,6 +219,9 @@ Examples:
     if include_convergence:
         print(f"Checkpoints: {args.checkpoints}")
     print(f"LaTeX generation: {'✅ Enabled' if not args.no_latex else '❌ Disabled'}")
+    print(f"Chart generation: {'✅ Enabled' if not args.no_charts else '❌ Disabled'}")
+    if not args.no_charts and args.chart_datasets:
+        print(f"Chart datasets filter: {args.chart_datasets}")
     print("-" * 60)
     
     try:
@@ -217,14 +238,29 @@ Examples:
             standard_trials_path=args.standard if include_convergence else None,
             algorithm_name=args.algorithm,
             include_convergence_analysis=include_convergence,
-            generate_latex_tables=not args.no_latex
+            generate_latex_tables=not args.no_latex,
+            generate_charts=not args.no_charts,
+            chart_dataset_ids=args.chart_datasets
         )
         
         print("\n🎉 Publication analysis completed successfully!")
         print(f"📁 Results saved in timestamped directory within: {args.output_dir}")
         
         if results and 'output_files' in results:
-            print(f"📄 Generated {len(results['output_files'])} output files")
+            total_files = len(results['output_files'])
+            chart_count = len([f for f in results['output_files'].keys() if f.startswith('chart_')])
+            latex_count = len([f for f in results['output_files'].keys() if f.startswith('latex_')])
+            
+            print(f"📄 Generated {total_files} output files:")
+            if latex_count > 0:
+                print(f"   📝 {latex_count} LaTeX tables")
+            if chart_count > 0:
+                print(f"   📊 {chart_count} PDF charts")
+            
+            # Show the analysis directory for easy access
+            if 'timestamp' in results:
+                analysis_dir = os.path.join(args.output_dir, f"{args.algorithm}_{results['timestamp']}")
+                print(f"   📂 Open charts: {analysis_dir}/plots/*.pdf")
         
         return 0
         

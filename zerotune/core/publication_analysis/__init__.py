@@ -9,6 +9,7 @@ Key Features:
 - Statistical analysis with paired t-tests for significance testing
 - Checkpoint analysis for Optuna convergence evaluation  
 - LaTeX table generation with proper formatting (bold for best, underline for significance)
+- Publication-ready convergence charts with confidence intervals
 - Modular design for easy integration and testing
 
 Usage:
@@ -26,12 +27,14 @@ from .results_processor import PublicationResultsProcessor
 from .stats_analyzer import PublicationStatsAnalyzer
 from .checkpoint_analyzer import CheckpointAnalyzer
 from .latex_generator import LatexTableGenerator
+from .chart_generator import PublicationChartGenerator
 
 __all__ = [
     'PublicationResultsProcessor',
     'PublicationStatsAnalyzer',
     'CheckpointAnalyzer',
     'LatexTableGenerator',
+    'PublicationChartGenerator',
 ]
 
 __version__ = '1.0.0' 

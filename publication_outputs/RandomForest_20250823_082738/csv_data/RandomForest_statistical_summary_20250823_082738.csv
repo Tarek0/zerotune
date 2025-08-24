@@ -1,0 +1,2 @@
+comparison,method1,method2,total_datasets,method1_wins,win_rate_pct,significant_differences,significance_rate_pct,mean_uplift_pct,std_uplift_pct
+zeroshot_vs_random,ZT,Random,10,10,100.0,5,50.0,1.4689383084445198,1.7062469469252406

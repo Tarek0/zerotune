@@ -1,0 +1,113 @@
+\begin{table}[htbp]
+\captionsetup{font=footnotesize, justification=raggedright, singlelinecheck=false}
+\caption[DecisionTree: Per-dataset performance of ZT+TPE vs TPE across HPO iterations]%
+{DecisionTree: ZT+TPE vs TPE: Performance comparison (AUC) on real-world datasets across different HPO iterations.
+AUC scores are averaged over 50 runs using different random seeds.
+ZT+TPE is initialized with zero-shot predictions.
+\textbf{Bold} values represent the highest performance, and \underline{underlined} values indicate statistically significant differences.
+Note: Data availability depends on trial collection during evaluation.}
+\label{table:decisiontree-optuna-convergence}
+\vskip 0.1in
+\begin{center}
+\begin{small}
+\begin{sc}
+
+%--------------------------------
+% First Row of Subtables
+%--------------------------------
+\begin{subtable}[t]{0.48\textwidth}
+    \centering
+    \caption{ZT+TPE vs TPE (1 iteration)}
+    \label{tab:decisiontree-optuna-1}
+    \begin{tabular}{lccc}
+    \toprule
+    \textbf{Dataset} & \textbf{ZT+TPE} & \textbf{TPE} & \textbf{Uplift (\%)} \\
+    \midrule
+    917    & \underline{\textbf{0.8979}} & 0.8123 & 10.54 \\
+    1049    & \underline{\textbf{0.8955}} & 0.8657 & 3.45 \\
+    1111    & \underline{\textbf{0.7971}} & 0.7643 & 4.29 \\
+    1464    & \textbf{0.7199} & 0.7118 & 1.14 \\
+    1494    & \underline{\textbf{0.8564}} & 0.8211 & 4.30 \\
+    1510    & \underline{\textbf{0.9721}} & 0.9648 & 0.76 \\
+    1558    & \underline{\textbf{0.8487}} & 0.7931 & 7.02 \\
+    4534    & \underline{\textbf{0.9554}} & 0.9210 & 3.74 \\
+    23381    & \underline{\textbf{0.5922}} & 0.5722 & 3.51 \\
+    40536    & \underline{\textbf{0.8096}} & 0.7782 & 4.03 \\
+    \bottomrule
+    \end{tabular}
+\end{subtable}
+\hfill
+\begin{subtable}[t]{0.48\textwidth}
+    \centering
+    \caption{ZT+TPE vs TPE (5 iterations)}
+    \label{tab:decisiontree-optuna-5}
+    \begin{tabular}{lccc}
+    \toprule
+    \textbf{Dataset} & \textbf{ZT+TPE} & \textbf{TPE} & \textbf{Uplift (\%)} \\
+    \midrule
+    917    & \underline{\textbf{0.9008}} & 0.8717 & 3.34 \\
+    1049    & \underline{\textbf{0.9001}} & 0.8882 & 1.35 \\
+    1111    & \underline{\textbf{0.8010}} & 0.7921 & 1.12 \\
+    1464    & \underline{\textbf{0.7338}} & 0.7287 & 0.70 \\
+    1494    & \underline{\textbf{0.8601}} & 0.8470 & 1.54 \\
+    1510    & \underline{\textbf{0.9765}} & 0.9741 & 0.24 \\
+    1558    & \underline{\textbf{0.8493}} & 0.8247 & 2.99 \\
+    4534    & \underline{\textbf{0.9574}} & 0.9508 & 0.70 \\
+    23381    & \textbf{0.6113} & 0.6080 & 0.53 \\
+    40536    & \underline{\textbf{0.8106}} & 0.8007 & 1.24 \\
+    \bottomrule
+    \end{tabular}
+\end{subtable}
+
+%--------------------------------
+% Second Row of Subtables
+%--------------------------------
+\begin{subtable}[t]{0.48\textwidth}
+    \centering
+    \caption{ZT+TPE vs TPE (10 iterations)}
+    \label{tab:decisiontree-optuna-10}
+    \begin{tabular}{lccc}
+    \toprule
+    \textbf{Dataset} & \textbf{ZT+TPE} & \textbf{TPE} & \textbf{Uplift (\%)} \\
+    \midrule
+    917    & \underline{\textbf{0.9055}} & 0.8880 & 1.98 \\
+    1049    & \underline{\textbf{0.9051}} & 0.8983 & 0.75 \\
+    1111    & \underline{\textbf{0.8031}} & 0.7994 & 0.46 \\
+    1464    & \underline{\textbf{0.7379}} & 0.7335 & 0.60 \\
+    1494    & \underline{\textbf{0.8672}} & 0.8615 & 0.66 \\
+    1510    & \underline{\textbf{0.9777}} & 0.9758 & 0.19 \\
+    1558    & \underline{\textbf{0.8526}} & 0.8415 & 1.32 \\
+    4534    & \textbf{0.9619} & 0.9596 & 0.24 \\
+    23381    & \underline{\textbf{0.6255}} & 0.6208 & 0.76 \\
+    40536    & \underline{\textbf{0.8131}} & 0.8084 & 0.58 \\
+    \bottomrule
+    \end{tabular}
+\end{subtable}
+\hfill
+\begin{subtable}[t]{0.48\textwidth}
+    \centering
+    \caption{ZT+TPE vs TPE (20 iterations)}
+    \label{tab:decisiontree-optuna-20}
+    \begin{tabular}{lccc}
+    \toprule
+    \textbf{Dataset} & \textbf{ZT+TPE} & \textbf{TPE} & \textbf{Uplift (\%)} \\
+    \midrule
+    917    & \textbf{0.9152} & 0.9102 & 0.55 \\
+    1049    & \textbf{0.9100} & 0.9096 & 0.05 \\
+    1111    & \underline{\textbf{0.8073}} & 0.8049 & 0.29 \\
+    1464    & \textbf{0.7413} & 0.7390 & 0.31 \\
+    1494    & 0.8727 & \textbf{0.8739} & -0.15 \\
+    1510    & \textbf{0.9798} & 0.9790 & 0.08 \\
+    1558    & \textbf{0.8567} & 0.8526 & 0.49 \\
+    4534    & 0.9675 & \textbf{0.9681} & -0.06 \\
+    23381    & \textbf{0.6374} & 0.6351 & 0.35 \\
+    40536    & 0.8156 & \textbf{0.8156} & -0.00 \\
+    \bottomrule
+    \end{tabular}
+\end{subtable}
+
+\end{sc}
+\end{small}
+\end{center}
+\vskip -0.1in
+\end{table}

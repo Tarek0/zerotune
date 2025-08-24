@@ -213,22 +213,21 @@ def train_predictor(mode="test"):
     print(f"✅ Model saved to: {model_path}")
     return model_path
 
-def evaluate_hyperparameters(params, X_train, y_train, X_test, y_test):
+def evaluate_hyperparameters(params, X_train, y_train, X_test, y_test, random_state=42):
     """Evaluate a set of hyperparameters and return AUC score."""
     try:
-        # Ensure n_estimators is integer
-        if 'n_estimators' in params:
-            params['n_estimators'] = int(params['n_estimators'])
+        # Parameters should already be converted to proper format
+        # Just ensure n_estimators is integer and max_depth=0 becomes None
+        params_copy = params.copy()
+        
+        if 'n_estimators' in params_copy:
+            params_copy['n_estimators'] = int(params_copy['n_estimators'])
             
-        # max_depth should already be converted to int or None
-        if 'max_depth' in params and params['max_depth'] == 0:
-            params['max_depth'] = None
-            
-        # min_samples_split and min_samples_leaf should already be converted to absolute counts
-        # max_features should already be converted to absolute count
+        if 'max_depth' in params_copy and params_copy['max_depth'] == 0:
+            params_copy['max_depth'] = None
             
         # Create and train model
-        rf = RandomForestClassifier(**params, random_state=42)
+        rf = RandomForestClassifier(**params_copy, random_state=random_state)
         rf.fit(X_train, y_train)
         
         # Get predictions
@@ -321,6 +320,12 @@ def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, 
     
     test_datasets = VALIDATION_DATASET_COLLECTION if test_dataset_ids is None else test_dataset_ids
     
+    if include_optuna_benchmark:
+        print(f"🔄 Including Optuna TPE benchmarks with {optuna_n_trials} trials each")
+        print("  - Warm-started Optuna TPE (using zero-shot predictions)")
+        print("  - Standard Optuna TPE (no warm-start)")
+        print("  - 📊 Trial data will be saved for publication analysis")
+    
     if n_seeds > 1:
         print(f"\nStarting zero-shot evaluation with {n_seeds} random seeds...")
         print("-" * 60)
@@ -409,21 +414,16 @@ def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, 
                         
                         value = depth_val
                     elif clean_param_name in ['min_samples_split', 'min_samples_leaf']:
-                        # Convert percentage to absolute counts
-                        n_samples = meta_features.get('n_samples', 1000)
+                        # Keep as relative values (like Decision Tree and XGBoost)
                         if clean_param_name == 'min_samples_split':
-                            # 1% to 20% of samples, minimum 2
-                            percentage = min(0.20, max(0.01, float(value)))
-                            value = max(2, int(percentage * n_samples))
+                            # 1% to 20% of samples
+                            value = min(0.20, max(0.01, float(value)))
                         else:  # min_samples_leaf
-                            # 0.5% to 10% of samples, minimum 1
-                            percentage = min(0.10, max(0.005, float(value)))
-                            value = max(1, int(percentage * n_samples))
+                            # 0.5% to 10% of samples
+                            value = min(0.10, max(0.005, float(value)))
                     elif clean_param_name == 'max_features':
-                        # Convert percentage to absolute count
-                        n_features = X.shape[1]
-                        percentage = min(1.0, max(0.1, float(value)))  # 10% to 100%
-                        value = max(1, int(percentage * n_features))
+                        # Keep as relative value (like Decision Tree and XGBoost)
+                        value = min(1.0, max(0.1, float(value)))  # 10% to 100%
                     
                     predicted_params[clean_param_name] = value
                 
@@ -448,7 +448,7 @@ def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, 
                     )
                     
                     # Train with predicted hyperparameters
-                    auc_predicted = evaluate_hyperparameters(predicted_params, X_train, y_train, X_test, y_test)
+                    auc_predicted = evaluate_hyperparameters(predicted_params, X_train, y_train, X_test, y_test, random_state=current_seed)
                     seed_predicted_results.append(auc_predicted)
                     
                     # Generate and evaluate random hyperparameters with same seed
@@ -457,7 +457,7 @@ def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, 
                         n_features=X.shape[1], 
                         random_state=current_seed
                     )
-                    auc_random = evaluate_hyperparameters(random_params, X_train, y_train, X_test, y_test)
+                    auc_random = evaluate_hyperparameters(random_params, X_train, y_train, X_test, y_test, random_state=current_seed)
                     seed_random_results.append(auc_random)
                     
                     # NEW: Optuna TPE benchmarks
@@ -466,34 +466,38 @@ def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, 
                         param_grid = ModelConfigs.get_param_grid_for_optimization('random_forest', X_train.shape)
                         
                         # 1. Warm-started Optuna TPE (using zero-shot predictions)
+                        # Use full dataset to match benchmark evaluation methodology
                         best_params_warmstart, best_score_warmstart, _, study_warmstart_df = optimize_hyperparameters(
                             model_class=RandomForestClassifier,
                             param_grid=param_grid,
-                            X_train=X_train,
-                            y_train=y_train,
+                            X_train=X,  # Use full dataset, not pre-split X_train
+                            y_train=y,  # Use full dataset, not pre-split y_train
                             metric="roc_auc",
                             n_iter=optuna_n_trials,
                             test_size=0.2,
                             random_state=current_seed,
                             verbose=False,
-                            warm_start_configs=[predicted_params],  # Use zero-shot prediction as warm-start
-                            dataset_meta_params=meta_features
+                            warm_start_configs=[predicted_params],  # Use relative parameters (like DT/XGB)
+                            dataset_meta_params=meta_features,
+                            model_random_state=current_seed  # Use same random_state as benchmark
                         )
                         seed_optuna_warmstart_results.append(best_score_warmstart)
                         
                         # 2. Standard Optuna TPE (no warm-start)
+                        # Use full dataset to match benchmark evaluation methodology
                         best_params_standard, best_score_standard, _, study_standard_df = optimize_hyperparameters(
                             model_class=RandomForestClassifier,
                             param_grid=param_grid,
-                            X_train=X_train,
-                            y_train=y_train,
+                            X_train=X,  # Use full dataset, not pre-split X_train
+                            y_train=y,  # Use full dataset, not pre-split y_train,
                             metric="roc_auc",
                             n_iter=optuna_n_trials,
                             test_size=0.2,
                             random_state=current_seed,
                             verbose=False,
                             warm_start_configs=None,  # No warm-start
-                            dataset_meta_params=meta_features
+                            dataset_meta_params=meta_features,
+                            model_random_state=current_seed  # Use same random_state as benchmark
                         )
                         seed_optuna_standard_results.append(best_score_standard)
                         
@@ -571,7 +575,7 @@ def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, 
                 )
                 
                 # Evaluate predicted hyperparameters
-                auc_predicted = evaluate_hyperparameters(predicted_params, X_train, y_train, X_test, y_test)
+                auc_predicted = evaluate_hyperparameters(predicted_params, X_train, y_train, X_test, y_test, random_state=42)
                 print(f"✅ Zero-Shot AUC: {auc_predicted:.4f}")
                 
                 # Benchmark against random hyperparameters
@@ -584,7 +588,7 @@ def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, 
                         n_features=X.shape[1], 
                         random_state=dataset_id
                     )
-                    auc_random = evaluate_hyperparameters(random_params, X_train, y_train, X_test, y_test)
+                    auc_random = evaluate_hyperparameters(random_params, X_train, y_train, X_test, y_test, random_state=42)
                     print(f"📊 Random AUC: {auc_random:.4f}")
                     
                     uplift = auc_predicted - auc_random
@@ -674,7 +678,9 @@ def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, 
         # Ensure benchmarks directory exists
         os.makedirs("benchmarks", exist_ok=True)
         
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        # Use the same timestamp as trial data for consistency
+        if 'timestamp' not in locals() or timestamp is None:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         benchmark_suffix = "_optuna" if include_optuna_benchmark else ""
         csv_filename = f"benchmarks/benchmark_results_rf_kb_v1_{mode}{benchmark_suffix}_{timestamp}.csv"
         

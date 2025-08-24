@@ -205,7 +205,8 @@ def _optuna_objective(
     y_val: ArrayLike,
     metric: str,
     dataset_meta_params: Optional[Dict[str, Any]] = None,
-    is_warm_start: bool = False
+    is_warm_start: bool = False,
+    model_random_state: Optional[int] = None
 ) -> float:
     """
     Objective function for Optuna optimization.
@@ -221,13 +222,19 @@ def _optuna_objective(
         metric: Evaluation metric to use
         dataset_meta_params: Optional dictionary of dataset meta-parameters for relative parameter conversion
         is_warm_start: Whether this is a warm-start trial
+        model_random_state: Optional random state for model initialization
         
     Returns:
         Performance score for the trial
     """
     # For warm-start trials, use the provided parameters directly
     if is_warm_start:
-        hyperparameters = trial.params
+        # Get warmstart parameters from system attributes (where they're actually stored)
+        if hasattr(trial, 'system_attrs') and 'fixed_params' in trial.system_attrs:
+            hyperparameters = trial.system_attrs['fixed_params']
+        else:
+            # Fallback to trial.params (might be empty for enqueued trials)
+            hyperparameters = trial.params
     else:
         # Sample hyperparameters based on parameter grid
         hyperparameters: HyperParams = {}
@@ -251,6 +258,10 @@ def _optuna_objective(
             hyperparameters, param_grid, dataset_meta_params
         )
     
+    # Add model random state for consistency with benchmark evaluation
+    if model_random_state is not None:
+        hyperparameters['random_state'] = model_random_state
+    
     # Evaluate configuration
     return evaluate_configuration(
         model_class, hyperparameters, X_train, X_val, y_train, y_val, metric
@@ -268,7 +279,8 @@ def optimize_hyperparameters(
     random_state: Optional[int] = 42,
     verbose: bool = True,
     warm_start_configs: Optional[List[HyperParams]] = None,
-    dataset_meta_params: Optional[Dict[str, Any]] = None
+    dataset_meta_params: Optional[Dict[str, Any]] = None,
+    model_random_state: Optional[int] = None
 ) -> Tuple[HyperParams, float, List[Dict[str, Any]], 'pd.DataFrame']:
     """
     Optimize hyperparameters using Optuna with warm-starting capabilities.
@@ -285,6 +297,7 @@ def optimize_hyperparameters(
         verbose: Whether to print progress
         warm_start_configs: Optional list of hyperparameter configurations to warm-start from
         dataset_meta_params: Optional dictionary of dataset meta-parameters for relative parameter conversion
+        model_random_state: Optional random state for model initialization (for consistency with benchmark)
         
     Returns:
         A tuple containing:
@@ -364,7 +377,8 @@ def optimize_hyperparameters(
             y_val,
             metric,
             dataset_meta_params,
-            is_warm_start
+            is_warm_start,
+            model_random_state
         )
     
     # Run optimization

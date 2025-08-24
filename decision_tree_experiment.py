@@ -448,34 +448,38 @@ def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, 
                                 param_grid['max_depth'] = (1, max_depth_upper, 'int')
                                 
                                 # 1. Warm-started Optuna TPE (using zero-shot predictions)
+                                # Use full dataset to match benchmark evaluation methodology
                                 best_params_warmstart, best_score_warmstart, _, study_warmstart_df = optimize_hyperparameters(
                                     model_class=DecisionTreeClassifier,
                                     param_grid=param_grid,
-                                    X_train=X_train,
-                                    y_train=y_train,
+                                    X_train=X,  # Use full dataset, not pre-split X_train
+                                    y_train=y,  # Use full dataset, not pre-split y_train
                                     metric="roc_auc",
                                     n_iter=optuna_n_trials,
                                     test_size=0.2,
                                     random_state=current_seed,
                                     verbose=False,
                                     warm_start_configs=[predicted_params],  # Use zero-shot prediction as warm-start
-                                    dataset_meta_params=meta_features
+                                    dataset_meta_params=meta_features,
+                                    model_random_state=current_seed  # Use same random_state as benchmark
                                 )
                                 seed_optuna_warmstart_results.append(best_score_warmstart)
                                 
                                 # 2. Standard Optuna TPE (no warm-start)
+                                # Use full dataset to match benchmark evaluation methodology
                                 best_params_standard, best_score_standard, _, study_standard_df = optimize_hyperparameters(
                                     model_class=DecisionTreeClassifier,
                                     param_grid=param_grid,
-                                    X_train=X_train,
-                                    y_train=y_train,
+                                    X_train=X,  # Use full dataset, not pre-split X_train
+                                    y_train=y,  # Use full dataset, not pre-split y_train
                                     metric="roc_auc",
                                     n_iter=optuna_n_trials,
                                     test_size=0.2,
                                     random_state=current_seed,
                                     verbose=False,
                                     warm_start_configs=None,  # No warm-start
-                                    dataset_meta_params=meta_features
+                                    dataset_meta_params=meta_features,
+                                    model_random_state=current_seed  # Use same random_state as benchmark
                                 )
                                 seed_optuna_standard_results.append(best_score_standard)
                                 
@@ -809,7 +813,9 @@ def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, 
             # Ensure benchmarks directory exists
             os.makedirs("benchmarks", exist_ok=True)
             
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            # Use the same timestamp as trial data for consistency
+            if timestamp is None:
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             benchmark_suffix = "_optuna" if include_optuna_benchmark else ""
             csv_filename = f"benchmarks/benchmark_results_{EXPERIMENT_ID}_{mode}{benchmark_suffix}_{timestamp}.csv"
             

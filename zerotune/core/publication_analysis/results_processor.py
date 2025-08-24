@@ -7,12 +7,13 @@ and generating publication-ready statistical analysis and LaTeX tables.
 
 import os
 import pandas as pd
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from datetime import datetime
 
 from .stats_analyzer import PublicationStatsAnalyzer
 from .checkpoint_analyzer import CheckpointAnalyzer
 from .latex_generator import LatexTableGenerator
+from .chart_generator import PublicationChartGenerator
 
 
 class PublicationResultsProcessor:
@@ -42,6 +43,7 @@ class PublicationResultsProcessor:
         self.stats_analyzer = PublicationStatsAnalyzer(alpha=alpha)
         self.checkpoint_analyzer = CheckpointAnalyzer(checkpoints=checkpoints)
         self.latex_generator = LatexTableGenerator(decimal_places=4, significance_alpha=alpha)
+        self.chart_generator = PublicationChartGenerator()
         
         # Ensure output directory exists
         os.makedirs(self.output_dir, exist_ok=True)
@@ -53,7 +55,9 @@ class PublicationResultsProcessor:
         standard_trials_path: Optional[str] = None,
         algorithm_name: str = "DecisionTree",
         include_convergence_analysis: bool = True,
-        generate_latex_tables: bool = True
+        generate_latex_tables: bool = True,
+        generate_charts: bool = True,
+        chart_dataset_ids: Optional[List[int]] = None
     ) -> Dict[str, Any]:
         """
         Process benchmark results and generate publication analysis.
@@ -65,6 +69,8 @@ class PublicationResultsProcessor:
             algorithm_name: Name of the algorithm for output files (default: "DecisionTree")
             include_convergence_analysis: Whether to perform convergence analysis (default: True)
             generate_latex_tables: Whether to generate LaTeX tables (default: True)
+            generate_charts: Whether to generate publication charts (default: True)
+            chart_dataset_ids: Optional list of dataset IDs to generate charts for (default: all)
             
         Returns:
             Dictionary containing all analysis results
@@ -90,6 +96,11 @@ class PublicationResultsProcessor:
         
         if generate_latex_tables:
             print("📝 LaTeX table generation: Enabled")
+        
+        if generate_charts:
+            print("📊 Publication chart generation: Enabled")
+            if chart_dataset_ids:
+                print(f"Chart dataset filter: {chart_dataset_ids}")
         
         print("-" * 60)
         
@@ -142,6 +153,24 @@ class PublicationResultsProcessor:
                 analysis_dir
             )
         
+        # 5. Generate publication charts if requested
+        chart_files = {}
+        if generate_charts and convergence_results:
+            print("\n📊 Generating publication charts...")
+            chart_files = self.chart_generator.generate_all_charts(
+                convergence_results=convergence_results,
+                benchmark_data=df_results,
+                algorithm_name=algorithm_name,
+                output_dir=analysis_dir,
+                dataset_ids=chart_dataset_ids,
+                include_individual_datasets=True,
+                include_aggregated=False,
+                include_comparison_charts=False,
+                show_confidence_intervals=True,
+                show_individual_traces=False,
+                save_charts=True
+            )
+        
         # Save results to files
         output_files = {}
         
@@ -180,6 +209,10 @@ class PublicationResultsProcessor:
         for table_type, latex_path in latex_files.items():
             output_files[f'latex_{table_type}'] = os.path.basename(latex_path)
         
+        # Add chart files to output files
+        for chart_type, chart_path in chart_files.items():
+            output_files[f'chart_{chart_type}'] = os.path.basename(chart_path)
+        
         # Prepare return data
         results = {
             'benchmark_data': df_results,
@@ -187,13 +220,14 @@ class PublicationResultsProcessor:
             'statistical_summary': summary_stats,
             'convergence_results': convergence_results,
             'latex_files': latex_files,
+            'chart_files': chart_files,
             'algorithm_name': algorithm_name,
             'timestamp': timestamp,
             'output_files': output_files
         }
         
         # Print final summary
-        self._print_analysis_summary(comparison_results, summary_stats, convergence_results, latex_files, algorithm_name, analysis_dir)
+        self._print_analysis_summary(comparison_results, summary_stats, convergence_results, latex_files, chart_files, algorithm_name, analysis_dir)
         
         return results
     
@@ -273,6 +307,7 @@ class PublicationResultsProcessor:
         summary_stats: pd.DataFrame,
         convergence_results: Dict,
         latex_files: Dict[str, str],
+        chart_files: Dict[str, str],
         algorithm_name: str,
         analysis_dir: str
     ):
@@ -319,9 +354,16 @@ class PublicationResultsProcessor:
                 table_name = table_type.replace('_', ' ').title()
                 print(f"   {table_name}: {os.path.basename(filepath)}")
         
-        total_files = len(comparison_results) + len(convergence_results.get('convergence_tables', {})) + len(latex_files)
+        # Charts summary
+        if chart_files:
+            print(f"\n📊 Publication Charts Generated:")
+            for chart_type, filepath in chart_files.items():
+                chart_name = chart_type.replace('_', ' ').title()
+                print(f"   {chart_name}: {os.path.basename(filepath)}")
+        
+        total_files = len(comparison_results) + len(convergence_results.get('convergence_tables', {})) + len(latex_files) + len(chart_files)
         print(f"\n✅ Analysis complete! Generated {total_files} output files.")
-        print("🎯 LaTeX tables are ready for publication use!")
+        print("🎯 LaTeX tables and charts are ready for publication use!")
         print(f"📁 All files saved in: {analysis_dir}")
     
     def get_available_comparisons(self, df_results: pd.DataFrame) -> Dict[str, bool]:

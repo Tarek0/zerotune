@@ -300,7 +300,7 @@ def run_benchmark_hpo(X_train, y_train, X_test, y_test, benchmark_type="random",
     else:
         raise ValueError(f"Unknown benchmark type: {benchmark_type}")
 
-def evaluate_hyperparameters(params, X_train, y_train, X_test, y_test):
+def evaluate_hyperparameters(params, X_train, y_train, X_test, y_test, random_state=42):
     """
     Evaluate hyperparameters and return AUC score.
     
@@ -308,12 +308,13 @@ def evaluate_hyperparameters(params, X_train, y_train, X_test, y_test):
         params: Hyperparameter dictionary
         X_train, y_train: Training data
         X_test, y_test: Test data
+        random_state: Random state for model initialization
         
     Returns:
         AUC score
     """
     try:
-        model = XGBClassifier(**params, random_state=42)
+        model = XGBClassifier(**params, random_state=random_state)
         model.fit(X_train, y_train)
         
         if hasattr(model, "predict_proba"):
@@ -477,7 +478,7 @@ def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, 
                     )
                     
                     # Evaluate predicted hyperparameters
-                    auc_predicted = evaluate_hyperparameters(predicted_params, X_train, y_train, X_test, y_test)
+                    auc_predicted = evaluate_hyperparameters(predicted_params, X_train, y_train, X_test, y_test, random_state=current_seed)
                     seed_predicted_results.append(auc_predicted)
                     
                     # Random baseline
@@ -487,7 +488,7 @@ def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, 
                             dataset_size=X_train.shape[0], 
                             n_features=X_train.shape[1]
                         )
-                        auc_random = evaluate_hyperparameters(random_params, X_train, y_train, X_test, y_test)
+                        auc_random = evaluate_hyperparameters(random_params, X_train, y_train, X_test, y_test, random_state=current_seed)
                         seed_random_results.append(auc_random)
                     
                     # Optuna benchmarks (if enabled)
@@ -496,19 +497,21 @@ def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, 
                         param_grid = ModelConfigs.get_param_grid_for_optimization('xgboost', X_train.shape)
                         
                         # Warm-started Optuna TPE
+                        # Use full dataset to match benchmark evaluation methodology
                         tqdm.write(f"🔄 Running warm-started Optuna TPE ({optuna_n_trials} trials)...")
                         best_params_warmstart, best_score_warmstart, _, study_warmstart_df = optimize_hyperparameters(
                             model_class=XGBClassifier,
                             param_grid=param_grid,
-                            X_train=X_train,
-                            y_train=y_train,
+                            X_train=X,  # Use full dataset, not pre-split X_train
+                            y_train=y,  # Use full dataset, not pre-split y_train
                             metric="roc_auc",
                             n_iter=optuna_n_trials,
                             test_size=0.2,
                             random_state=current_seed,
                             verbose=False,
                             warm_start_configs=[predicted_params],  # Use zero-shot prediction as warm-start
-                            dataset_meta_params=meta_features
+                            dataset_meta_params=meta_features,
+                            model_random_state=current_seed  # Use same random_state as benchmark
                         )
                         seed_optuna_warmstart_results.append(best_score_warmstart)
                         
@@ -516,19 +519,21 @@ def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, 
                         save_trial_data(study_warmstart_df, 'warmstart', dataset_id, current_seed, timestamp, EXPERIMENT_ID)
                         
                         # Standard Optuna TPE
+                        # Use full dataset to match benchmark evaluation methodology
                         tqdm.write(f"🔄 Running standard Optuna TPE ({optuna_n_trials} trials)...")
                         best_params_standard, best_score_standard, _, study_standard_df = optimize_hyperparameters(
                             model_class=XGBClassifier,
                             param_grid=param_grid,
-                            X_train=X_train,
-                            y_train=y_train,
+                            X_train=X,  # Use full dataset, not pre-split X_train
+                            y_train=y,  # Use full dataset, not pre-split y_train
                             metric="roc_auc",
                             n_iter=optuna_n_trials,
                             test_size=0.2,
                             random_state=current_seed,
                             verbose=False,
                             warm_start_configs=None,  # No warm-start
-                            dataset_meta_params=meta_features
+                            dataset_meta_params=meta_features,
+                            model_random_state=current_seed  # Use same random_state as benchmark
                         )
                         seed_optuna_standard_results.append(best_score_standard)
                         
@@ -600,7 +605,7 @@ def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, 
                 )
                 
                 # Evaluate predicted hyperparameters
-                auc_predicted = evaluate_hyperparameters(predicted_params, X_train, y_train, X_test, y_test)
+                auc_predicted = evaluate_hyperparameters(predicted_params, X_train, y_train, X_test, y_test, random_state=42)
                 tqdm.write(f"✅ {dataset_name}: AUC {auc_predicted:.4f}")
                 
                 # Store results
@@ -678,7 +683,11 @@ def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, 
     # Save results to CSV
     if save_benchmark and results:
         os.makedirs("benchmarks", exist_ok=True)
-        timestamp_csv = datetime.now().strftime("%Y%m%d_%H%M%S")
+        # Use the same timestamp as trial data for consistency
+        if 'timestamp' not in locals() or timestamp is None:
+            timestamp_csv = datetime.now().strftime("%Y%m%d_%H%M%S")
+        else:
+            timestamp_csv = timestamp
         optuna_suffix = "_optuna" if include_optuna_benchmark else ""
         csv_filename = f"benchmarks/benchmark_results_{EXPERIMENT_ID}_{mode}{optuna_suffix}_{timestamp_csv}.csv"
         
