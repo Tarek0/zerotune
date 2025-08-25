@@ -66,6 +66,7 @@ output/
 my_experiment/
 notes/
 benchmarks/
+publication_outputs/
 
 # Include production models but exclude experimental ones
 knowledge_base/kb_*_test.json           # Exclude test knowledge bases

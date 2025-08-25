@@ -16,6 +16,8 @@ xgboost = "^1.7.0"
 openml = ">=0.15.0"
 joblib = "^1.2.0"
 optuna = "^3.2.0"
+plotly = "^6.3.0"
+kaleido = "^1.0.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.3.1"

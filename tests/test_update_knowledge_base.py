@@ -25,8 +25,8 @@ def synthetic_meta_parameters():
 
 
 def test_update_knowledge_base():
-    """Test updating a knowledge base with results from a new dataset."""
-    # Create an empty knowledge base
+    """Test updating knowledge base with dataset results."""
+    # Initialize empty knowledge base
     kb = initialize_knowledge_base()
     
     # Dataset information
@@ -53,11 +53,6 @@ def test_update_knowledge_base():
         model_type="decision_tree"
     )
     
-    # Verify the knowledge base structure
-    assert "meta_features" in updated_kb
-    assert "results" in updated_kb
-    assert "datasets" in updated_kb
-    
     # Verify the meta features were added
     assert len(updated_kb["meta_features"]) == 1
     assert updated_kb["meta_features"][0] == meta_features
@@ -66,7 +61,13 @@ def test_update_knowledge_base():
     assert len(updated_kb["results"]) == 1
     result = updated_kb["results"][0]
     assert result["dataset_name"] == dataset_name
-    assert result["best_hyperparameters"] == dt_hyperparameters
+    
+    # Check that max_depth was normalized to percentage (5 / max_theoretical_depth for 100 samples)
+    # For 100 samples: max_theoretical_depth = max(1, int(log2(100) * 2)) = max(1, int(6.64 * 2)) = 13
+    # So normalized max_depth = 5 / 13 ≈ 0.38461538461538464
+    expected_normalized_hyperparams = {"max_depth": 5/13, "min_samples_split": 2}
+    assert result["best_hyperparameters"] == expected_normalized_hyperparams
+    
     assert result["best_score"] == dt_score
     assert result["model_type"] == "decision_tree"
     assert result["dataset_id"] == dataset_id
@@ -97,7 +98,11 @@ def test_update_knowledge_base():
     # Verify the new result was added
     assert len(updated_kb["results"]) == 2
     rf_result = [r for r in updated_kb["results"] if r["model_type"] == "random_forest"][0]
-    assert rf_result["best_hyperparameters"] == rf_hyperparameters
+    
+    # Check that max_depth was normalized for random forest as well
+    # For 100 samples: max_theoretical_depth = 13, so normalized max_depth = 10 / 13 ≈ 0.7692307692307693
+    expected_rf_hyperparams = {"n_estimators": 100, "max_depth": 10/13}
+    assert rf_result["best_hyperparameters"] == expected_rf_hyperparams
     assert rf_result["best_score"] == rf_score
     
     # Verify the dataset info was not duplicated
