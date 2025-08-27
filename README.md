@@ -102,7 +102,7 @@ poetry run python random_forest_experiment.py eval-test
 poetry run python xgb_experiment.py eval-test
 
 # Full evaluation with Optuna benchmarking
-poetry run python decision_tree_experiment.py eval-full --optuna --optuna_trials 25 --seeds 50
+poetry run python decision_tree_experiment.py eval-full --optuna_trials 25 --seeds 50
 ```
 
 ## 🏗️ Architecture
