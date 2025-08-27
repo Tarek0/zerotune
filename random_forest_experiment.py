@@ -775,14 +775,12 @@ if __name__ == "__main__":
                 mode="full",  # Use full trained model (more robust)
                 test_dataset_ids=[917, 1049],  # Only test on first 2 datasets for speed
                 n_seeds=n_seeds,
-                include_optuna_benchmark=include_optuna_benchmark,
                 optuna_n_trials=optuna_n_trials
             )
         elif command == "eval-full":
             test_zero_shot_predictor(
                 mode="full", 
                 n_seeds=n_seeds,
-                include_optuna_benchmark=include_optuna_benchmark,
                 optuna_n_trials=optuna_n_trials
             )
         else:
