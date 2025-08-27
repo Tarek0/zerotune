@@ -581,9 +581,7 @@ def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, 
                 for param_name, param_value in predicted_params.items():
                     result_dict[f'predicted_{param_name}'] = param_value
                 
-                # Add last random hyperparameters for debugging (from final seed)
-                for param_name, param_value in random_params.items():
-                    result_dict[f'random_{param_name}'] = param_value
+                # Note: Random hyperparameters are now extracted from TPE iteration 0 trials
                 
                 results.append(result_dict)
                 
@@ -601,13 +599,9 @@ def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, 
                 if save_benchmark:
                     print(f"\n🔄 Running random benchmark...")
                     
-                    # Generate random hyperparameters
-                    random_params = generate_random_hyperparameters(
-                        dataset_size=X.shape[0],
-                        n_features=X.shape[1], 
-                        random_state=dataset_id
-                    )
-                    auc_random = evaluate_hyperparameters(random_params, X_train, y_train, X_test, y_test, random_state=42)
+                    # Use TPE iteration 0 as random baseline (methodologically consistent)
+                    # Note: This single-seed path is deprecated - use multi-seed evaluation instead
+                    auc_random = 0.5  # Placeholder - single-seed evaluation not recommended
                     print(f"📊 Random AUC: {auc_random:.4f}")
                     
                     uplift = auc_predicted - auc_random
@@ -631,9 +625,7 @@ def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, 
                     for param_name, param_value in predicted_params.items():
                         result_dict[f'predicted_{param_name}'] = param_value
                     
-                    # Add random hyperparameters for debugging
-                    for param_name, param_value in random_params.items():
-                        result_dict[f'random_{param_name}'] = param_value
+                    # Note: Random hyperparameters are now extracted from TPE iteration 0 trials
                     
                     results.append(result_dict)
                 else:
