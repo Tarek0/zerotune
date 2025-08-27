@@ -381,7 +381,7 @@ def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, 
     all_seed_results = [] if n_seeds > 1 else None
     
     # Generate timestamp for trial data saving (if Optuna benchmarking is enabled)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S") if include_optuna_benchmark else None
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")  # Always generate timestamp
     
     dataset_progress = tqdm(test_dataset_ids, desc="🚀 Evaluating datasets", unit="dataset")
     for dataset_id in dataset_progress:
@@ -604,9 +604,7 @@ def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, 
                 for param_name, param_value in predicted_params.items():
                     result_dict[f'predicted_{param_name}'] = param_value
                 
-                # Add last random hyperparameters for debugging (from final seed)
-                for param_name, param_value in random_params.items():
-                    result_dict[f'random_{param_name}'] = param_value
+                # Note: Random hyperparameters are now extracted from TPE iteration 0 trials
                 
                 results.append(result_dict)
                 
@@ -700,7 +698,7 @@ def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, 
             timestamp_csv = datetime.now().strftime("%Y%m%d_%H%M%S")
         else:
             timestamp_csv = timestamp
-        optuna_suffix = "_optuna" if include_optuna_benchmark else ""
+        optuna_suffix = "_optuna"  # Always include optuna suffix
         csv_filename = f"benchmarks/benchmark_results_{EXPERIMENT_ID}_{mode}{optuna_suffix}_{timestamp_csv}.csv"
         
         print(f"\n💾 Saving results to CSV: {csv_filename}")
@@ -758,24 +756,23 @@ if __name__ == "__main__":
         print("  python xgb_experiment.py eval-full    # Full evaluation: all 10 datasets")
         print("")
         print("Optional flags:")
-        print("  --optuna                    # Include Optuna TPE benchmarking")
         print("  --optuna_trials N           # Number of Optuna trials (default: 20)")
         print("  --seeds N                   # Number of random seeds (default: 50)")
         print("")
         print("Examples:")
-        print("  python xgb_experiment.py eval-full --optuna --optuna_trials 25")
-        print("  python xgb_experiment.py eval-test --optuna --seeds 3       # Quick testing")
+        print("  python xgb_experiment.py eval-full --optuna_trials 25")
+        print("  python xgb_experiment.py eval-test --seeds 3       # Quick testing")
         sys.exit(0)
     
     command = sys.argv[1]
     
     # Parse optional flags
-    include_optuna_benchmark = "--optuna" in sys.argv
+    include_optuna_benchmark = True  # Always enabled for methodological consistency
     optuna_n_trials = 20  # Default value
     n_seeds = 50  # Default value
     
-    if include_optuna_benchmark:
-        print("Including Optuna TPE benchmarking")
+    # Optuna benchmarking always enabled for methodological consistency
+    print("Including Optuna TPE benchmarking")
     
     if "--optuna_trials" in sys.argv:
         try:
@@ -817,14 +814,12 @@ if __name__ == "__main__":
                 mode="full",  # Use full trained model (more robust)
                 test_dataset_ids=[917, 1049],  # Only test on first 2 datasets for speed
                 n_seeds=n_seeds,
-                include_optuna_benchmark=include_optuna_benchmark,
                 optuna_n_trials=optuna_n_trials
             )
         elif command == "eval-full":
             test_zero_shot_predictor(
                 mode="full", 
                 n_seeds=n_seeds,
-                include_optuna_benchmark=include_optuna_benchmark,
                 optuna_n_trials=optuna_n_trials
             )
         else:

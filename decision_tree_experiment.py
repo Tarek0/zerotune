@@ -42,7 +42,7 @@ OPTUNA TPE WARM-START INTEGRATION: ✅ IMPLEMENTED!
    - Random hyperparameters (baseline)
    - Warm-started Optuna TPE (zero-shot + optimization)
    - Standard Optuna TPE (optimization only)
-🎯 Usage: python decision_tree_experiment.py eval-full --optuna --optuna_trials 30
+🎯 Usage: python decision_tree_experiment.py eval-full --optuna_trials 30
 📊 Trial Data Storage: Saves detailed Optuna trial data for publication analysis
 
 DATASET COLLECTIONS:
@@ -222,26 +222,23 @@ def train_zero_shot_predictor(mode="test", top_k_trials=1):
 
 
 
-def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, n_seeds=1, include_optuna_benchmark=False, optuna_n_trials=20, test_dataset_ids=None):
+def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, n_seeds=1, optuna_n_trials=20, test_dataset_ids=None):
     """
     Test the zero-shot predictor on validation datasets
     
     METHODOLOGICAL NOTE - Random Baseline Selection:
-    We use TPE iteration 0 as the random baseline (requires include_optuna_benchmark=True) for:
+    We use TPE iteration 0 as the random baseline for:
     1. Evaluation Consistency: Same train/val split and model random_state as optimization trials
     2. True Baseline: Represents actual starting point of TPE optimization being compared
     3. Parameter Distribution: Uses same Optuna sampling as other trials (no distribution mismatch)
     4. Statistical Rigor: Same evaluation pipeline ensures fair comparison
     This makes publication results more methodologically sound and defensible in peer review.
     
-    NOTE: Random baseline requires --optuna flag. Without it, only zero-shot predictions are evaluated.
-    
     Args:
         mode: "test" or "full" - determines which model to load
         model_path: Optional path to specific model file
         save_benchmark: Whether to save benchmark results
         n_seeds: Number of random seeds to use for evaluation
-        include_optuna_benchmark: Whether to include Optuna TPE benchmarking
         optuna_n_trials: Number of trials for Optuna optimization
         test_dataset_ids: Optional list of specific dataset IDs to test on
     """
@@ -267,11 +264,11 @@ def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, 
     print(f"Testing on {len(test_dataset_ids)} unseen datasets: {test_dataset_ids}")
     print("These datasets were NOT used in knowledge base building to avoid data leakage")
     
-    if include_optuna_benchmark:
-        print(f"🔄 Including Optuna TPE benchmarks with {optuna_n_trials} trials each")
-        print("  - Warm-started Optuna TPE (using zero-shot predictions)")
-        print("  - Standard Optuna TPE (no warm-start)")
-        print("  - 📊 Trial data will be saved for publication analysis")
+    # Optuna TPE benchmarking always enabled for methodological consistency
+    print(f"🔄 Including Optuna TPE benchmarks with {optuna_n_trials} trials each")
+    print("  - Warm-started Optuna TPE (using zero-shot predictions)")
+    print("  - Standard Optuna TPE (no warm-start)")
+    print("  - 📊 Trial data will be saved for publication analysis")
     
     if not os.path.exists(model_path):
         print(f"❌ Model not found: {model_path}")
@@ -298,7 +295,7 @@ def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, 
         results = []
         
         # Generate timestamp for trial data files
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S") if include_optuna_benchmark else None
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")  # Always generate timestamp
         
         # For multiple seeds, we'll store all results and aggregate at the end
         all_seed_results = [] if n_seeds > 1 else None
@@ -417,9 +414,8 @@ def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, 
                         
                         seed_results.append(auc_score_seed)
                         
-                        # Optuna TPE benchmarks (required for random baseline)
+                        # Optuna TPE benchmarks (always enabled for methodological consistency)
                         if save_benchmark:
-                            if include_optuna_benchmark:
                                 from zerotune.core.optimization import optimize_hyperparameters
                                 
                                 # Create simple Optuna parameter ranges matching DecisionTreeClassifier format
@@ -502,7 +498,7 @@ def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, 
                     uplift_zs_vs_optuna_ws = None
                     uplift_zs_vs_optuna_ws_pct = None
                     
-                    if save_benchmark and include_optuna_benchmark:
+                    if save_benchmark:
                         # Use TPE iteration 0 as random baseline (extracted above)
                         auc_random = np.mean(seed_random_results) if seed_random_results else None
                         auc_random_std = np.std(seed_random_results) if seed_random_results else None
@@ -615,7 +611,7 @@ def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, 
                         print(f"📊 Random AUC: {auc_random:.4f} ± {auc_random_std:.4f} (avg over {n_seeds} seeds)")
                         print(f"🚀 Uplift vs random: {uplift_random:+.4f} ({uplift_random_pct:+.1f}%)")
                         
-                        if include_optuna_benchmark and 'auc_optuna_warmstart' in locals() and 'auc_optuna_standard' in locals():
+                        if 'auc_optuna_warmstart' in locals() and 'auc_optuna_standard' in locals():
                             print(f"🚀 Optuna TPE (warm-start): {auc_optuna_warmstart:.4f} ± {auc_optuna_warmstart_std:.4f}")
                             print(f"📊 Optuna TPE (standard): {auc_optuna_standard:.4f} ± {auc_optuna_standard_std:.4f}")
                             
@@ -630,7 +626,7 @@ def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, 
                     else:
                         print(f"🚀 Uplift vs random: {uplift_random:+.4f} ({uplift_random_pct:+.1f}%)")
                         
-                        if include_optuna_benchmark and 'auc_optuna_warmstart' in locals() and 'auc_optuna_standard' in locals():
+                        if 'auc_optuna_warmstart' in locals() and 'auc_optuna_standard' in locals():
                             # Calculate uplifts vs Optuna methods
                             uplift_vs_optuna_std = auc_optuna_warmstart - auc_optuna_standard
                             uplift_vs_optuna_std_pct = (uplift_vs_optuna_std / auc_optuna_standard) * 100 if auc_optuna_standard > 0 else 0
@@ -666,12 +662,10 @@ def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, 
                         'n_seeds': len(seed_results)  # Add number of seeds for statistical analysis
                     })
                     
-                    # Add random hyperparameters for debugging
-                    for param_name, param_value in random_params.items():
-                        result[f'random_{param_name}'] = param_value
+                    # Note: Random hyperparameters are now extracted from TPE iteration 0 trials
                     
                     # Add Optuna results if available
-                    if include_optuna_benchmark and 'auc_optuna_warmstart' in locals() and 'auc_optuna_standard' in locals():
+                    if 'auc_optuna_warmstart' in locals() and 'auc_optuna_standard' in locals():
                         result.update({
                             'auc_optuna_warmstart': auc_optuna_warmstart,
                             'auc_optuna_standard': auc_optuna_standard,
@@ -697,15 +691,15 @@ def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, 
                     'uplift_random_pct': None
                 }
                 
-                if include_optuna_benchmark:
-                    result_error.update({
-                        'auc_optuna_warmstart': None,
-                        'auc_optuna_standard': None,
-                        'uplift_warmstart_vs_standard': None,
-                        'uplift_warmstart_vs_standard_pct': None,
-                        'uplift_zeroshot_vs_warmstart': None,
-                        'uplift_zeroshot_vs_warmstart_pct': None
-                    })
+                # Always include Optuna fields in error results
+                result_error.update({
+                    'auc_optuna_warmstart': None,
+                    'auc_optuna_standard': None,
+                    'uplift_warmstart_vs_standard': None,
+                    'uplift_warmstart_vs_standard_pct': None,
+                    'uplift_zeroshot_vs_warmstart': None,
+                    'uplift_zeroshot_vs_warmstart_pct': None
+                })
                 
                 results.append(result_error)
         
@@ -747,8 +741,8 @@ def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, 
                     print(f"🚀 Relative Improvement vs random: {rel_improvement:+.1f}%")
                     print(f"🎯 Datasets with positive uplift: {positive_uplifts}/{len(uplifts)} ({positive_pct:.1f}%)")
                 
-                # NEW: Optuna benchmark summary
-                if include_optuna_benchmark:
+                # Optuna benchmark summary (always enabled)
+                # Always show Optuna results
                     optuna_warmstart_aucs = [r['auc_optuna_warmstart'] for r in successful_results if r.get('auc_optuna_warmstart') is not None]
                     optuna_standard_aucs = [r['auc_optuna_standard'] for r in successful_results if r.get('auc_optuna_standard') is not None]
                     
@@ -781,16 +775,12 @@ def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, 
             
             # Detailed results table
             print(f"\nDetailed Results:")
-            if include_optuna_benchmark:
-                print("ID     Dataset Name                   Zero-Shot  Random     Optuna-WS  Optuna-Std Random_Uplift")
-                print("-" * 95)
-            else:
-                print("ID     Dataset Name                   Zero-Shot  Random     Random_Uplift")
-                print("-" * 73)
+            print("ID     Dataset Name                   Zero-Shot  Random     Optuna-WS  Optuna-Std Random_Uplift")
+            print("-" * 95)
             
             for result in successful_results:
                 dataset_name = result['dataset_name'][:30]  # Truncate long names
-                if include_optuna_benchmark and result.get('auc_optuna_warmstart') is not None:
+                if result.get('auc_optuna_warmstart') is not None:
                     print(f"  {result['dataset_id']:<6} {dataset_name:<30} {result['auc_predicted']:.4f}     {result.get('auc_random', 0):.4f}     {result['auc_optuna_warmstart']:.4f}     {result['auc_optuna_standard']:.4f}     {result.get('uplift_random', 0):+.4f}     ")
                 elif save_benchmark and result['auc_random'] is not None:
                     print(f"  {result['dataset_id']:<6} {dataset_name:<30} {result['auc_predicted']:.4f}     {result['auc_random']:.4f}     {result['uplift_random']:+.4f}     ")
@@ -810,7 +800,7 @@ def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, 
             # Use the same timestamp as trial data for consistency
             if timestamp is None:
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            benchmark_suffix = "_optuna" if include_optuna_benchmark else ""
+            benchmark_suffix = "_optuna"  # Always include optuna suffix
             csv_filename = f"benchmarks/benchmark_results_{EXPERIMENT_ID}_{mode}{benchmark_suffix}_{timestamp}.csv"
             
             print(f"\n💾 Saving results to CSV: {csv_filename}")
@@ -837,19 +827,18 @@ def main():
         print("  python decision_tree_experiment.py eval-full      # Full evaluation: all 10 datasets")
         print("")
         print("Optional flags:")
-        print("  --optuna                    # Include Optuna TPE benchmarking")
         print("  --optuna_trials N           # Number of Optuna trials (default: 20)")
         print("  --seeds N                   # Number of random seeds (default: 50)")
         print("")
         print("Examples:")
-        print("  python decision_tree_experiment.py eval-full --optuna --optuna_trials 25")
-        print("  python decision_tree_experiment.py eval-test --optuna --seeds 3       # Quick testing")
+        print("  python decision_tree_experiment.py eval-full --optuna_trials 25")
+        print("  python decision_tree_experiment.py eval-test --seeds 3       # Quick testing")
         return
     
     command = sys.argv[1]
     
     # Parse optional flags
-    include_optuna_benchmark = "--optuna" in sys.argv
+    include_optuna_benchmark = True  # Always enabled for methodological consistency
     optuna_n_trials = 20  # Default value
     n_seeds = 50  # Default value
     
@@ -888,14 +877,12 @@ def main():
                 mode="full",  # Use full trained model (more robust)
                 test_dataset_ids=[917, 1049],  # Only test on first 2 datasets for speed
                 n_seeds=n_seeds,
-                include_optuna_benchmark=include_optuna_benchmark,
                 optuna_n_trials=optuna_n_trials
             )
         elif command == "eval-full":
             test_zero_shot_predictor(
                 mode="full", 
                 n_seeds=n_seeds,
-                include_optuna_benchmark=include_optuna_benchmark,
                 optuna_n_trials=optuna_n_trials
             )
         else:
