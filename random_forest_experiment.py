@@ -293,11 +293,24 @@ def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, 
     """
     Test the zero-shot predictor on validation datasets
     
+    METHODOLOGICAL NOTE - Random Baseline Selection:
+    We use TPE iteration 0 as the random baseline (requires include_optuna_benchmark=True) for:
+    1. Evaluation Consistency: Same train/val split and model random_state as optimization trials
+    2. True Baseline: Represents actual starting point of TPE optimization being compared
+    3. Parameter Distribution: Uses same Optuna sampling as other trials (no distribution mismatch)
+    4. Statistical Rigor: Same evaluation pipeline ensures fair comparison
+    This makes publication results more methodologically sound and defensible in peer review.
+    
+    NOTE: Random baseline requires --optuna flag. Without it, only zero-shot predictions are evaluated.
+    
     Args:
         mode: "test" or "full"
         model_path: Path to trained model (optional)
         save_benchmark: Whether to save benchmark results
         n_seeds: Number of random seeds for robust evaluation
+        include_optuna_benchmark: Whether to include Optuna TPE benchmarking
+        optuna_n_trials: Number of trials for Optuna optimization
+        test_dataset_ids: Optional list of specific dataset IDs to test on
     
     Returns:
         dict: Results summary
@@ -451,17 +464,10 @@ def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, 
                     auc_predicted = evaluate_hyperparameters(predicted_params, X_train, y_train, X_test, y_test, random_state=current_seed)
                     seed_predicted_results.append(auc_predicted)
                     
-                    # Generate and evaluate random hyperparameters with same seed
-                    random_params = generate_random_hyperparameters(
-                        dataset_size=X.shape[0], 
-                        n_features=X.shape[1], 
-                        random_state=current_seed
-                    )
-                    auc_random = evaluate_hyperparameters(random_params, X_train, y_train, X_test, y_test, random_state=current_seed)
-                    seed_random_results.append(auc_random)
+                    # Random baseline will be extracted from TPE iteration 0 below
                     
-                    # NEW: Optuna TPE benchmarks
-                    if include_optuna_benchmark:
+                    # Optuna TPE benchmarks (required for random baseline)
+                    if save_benchmark and include_optuna_benchmark:
                         # Create Optuna parameter ranges
                         param_grid = ModelConfigs.get_param_grid_for_optimization('random_forest', X_train.shape)
                         
@@ -501,6 +507,14 @@ def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, 
                         )
                         seed_optuna_standard_results.append(best_score_standard)
                         
+                        # Extract iteration 0 performance from standard TPE as random baseline
+                        # This represents the true "random" starting point of TPE optimization
+                        if len(study_standard_df) > 0 and 'number' in study_standard_df.columns:
+                            iteration_0_trials = study_standard_df[study_standard_df['number'] == 0]
+                            if len(iteration_0_trials) > 0:
+                                auc_random_seed = iteration_0_trials['value'].iloc[0]
+                                seed_random_results.append(auc_random_seed)
+                        
                         # Save trial data
                         save_trial_data(study_warmstart_df, 'warmstart', dataset_id, current_seed, timestamp, EXPERIMENT_ID)
                         save_trial_data(study_standard_df, 'standard', dataset_id, current_seed, timestamp, EXPERIMENT_ID)
@@ -508,22 +522,28 @@ def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, 
                 # Calculate statistics across seeds
                 auc_predicted_mean = np.mean(seed_predicted_results)
                 auc_predicted_std = np.std(seed_predicted_results)
-                auc_random_mean = np.mean(seed_random_results)
-                auc_random_std = np.std(seed_random_results)
+                auc_random_mean = np.mean(seed_random_results) if seed_random_results else None
+                auc_random_std = np.std(seed_random_results) if seed_random_results else None
                 
                 # Calculate Optuna statistics if available
-                if include_optuna_benchmark:
+                if save_benchmark and include_optuna_benchmark:
                     if seed_optuna_warmstart_results and seed_optuna_standard_results:
                         auc_optuna_warmstart = np.mean(seed_optuna_warmstart_results)
                         auc_optuna_standard = np.mean(seed_optuna_standard_results)
                     else:
                         auc_optuna_warmstart = None
                         auc_optuna_standard = None
+                else:
+                    auc_optuna_warmstart = None
+                    auc_optuna_standard = None
                 
                 # Show concise results
-                uplift = auc_predicted_mean - auc_random_mean
-                uplift_pct = (uplift / auc_random_mean * 100) if auc_random_mean > 0 else 0
-                tqdm.write(f"✅ {dataset_name}: AUC {auc_predicted_mean:.4f} (vs random {auc_random_mean:.4f}, +{uplift_pct:.1f}%)")
+                if auc_random_mean is not None:
+                    uplift = auc_predicted_mean - auc_random_mean
+                    uplift_pct = (uplift / auc_random_mean * 100) if auc_random_mean > 0 else 0
+                    tqdm.write(f"✅ {dataset_name}: AUC {auc_predicted_mean:.4f} (vs random {auc_random_mean:.4f}, +{uplift_pct:.1f}%)")
+                else:
+                    tqdm.write(f"✅ {dataset_name}: AUC {auc_predicted_mean:.4f} (no random baseline - requires --optuna)")
                 
                 # Store results with hyperparameters for debugging
                 result_dict = {

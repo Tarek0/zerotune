@@ -226,6 +226,16 @@ def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, 
     """
     Test the zero-shot predictor on validation datasets
     
+    METHODOLOGICAL NOTE - Random Baseline Selection:
+    We use TPE iteration 0 as the random baseline (requires include_optuna_benchmark=True) for:
+    1. Evaluation Consistency: Same train/val split and model random_state as optimization trials
+    2. True Baseline: Represents actual starting point of TPE optimization being compared
+    3. Parameter Distribution: Uses same Optuna sampling as other trials (no distribution mismatch)
+    4. Statistical Rigor: Same evaluation pipeline ensures fair comparison
+    This makes publication results more methodologically sound and defensible in peer review.
+    
+    NOTE: Random baseline requires --optuna flag. Without it, only zero-shot predictions are evaluated.
+    
     Args:
         mode: "test" or "full" - determines which model to load
         model_path: Optional path to specific model file
@@ -407,30 +417,8 @@ def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, 
                         
                         seed_results.append(auc_score_seed)
                         
-                        # Benchmark against random hyperparameters with same seed
+                        # Optuna TPE benchmarks (required for random baseline)
                         if save_benchmark:
-                            # Generate random hyperparameters using ModelConfigs
-                            random_params = ModelConfigs.generate_random_hyperparameters(
-                                model_type='decision_tree',
-                                dataset_size=X.shape[0],
-                                n_features=X.shape[1],
-                                random_state=current_seed
-                            )
-                            
-                            # Train with random hyperparameters
-                            dt_random = DecisionTreeClassifier(**random_params, random_state=current_seed)
-                            dt_random.fit(X_train, y_train)
-                            y_pred_proba_random = dt_random.predict_proba(X_test)
-                            
-                            # Calculate random AUC
-                            if y_pred_proba_random.shape[1] == 2:
-                                auc_random_seed = roc_auc_score(y_test, y_pred_proba_random[:, 1])
-                            else:
-                                auc_random_seed = roc_auc_score(y_test, y_pred_proba_random, multi_class='ovr', average='weighted')
-                            
-                            seed_random_results.append(auc_random_seed)
-                            
-                            # NEW: Optuna TPE benchmarks
                             if include_optuna_benchmark:
                                 from zerotune.core.optimization import optimize_hyperparameters
                                 
@@ -483,6 +471,14 @@ def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, 
                                 )
                                 seed_optuna_standard_results.append(best_score_standard)
                                 
+                                # Extract iteration 0 performance from standard TPE as random baseline
+                                # This represents the true "random" starting point of TPE optimization
+                                if len(study_standard_df) > 0 and 'number' in study_standard_df.columns:
+                                    iteration_0_trials = study_standard_df[study_standard_df['number'] == 0]
+                                    if len(iteration_0_trials) > 0:
+                                        auc_random_seed = iteration_0_trials['value'].iloc[0]
+                                        seed_random_results.append(auc_random_seed)
+                                
                                 # Save trial data
                                 save_trial_data(study_warmstart_df, 'warmstart', dataset_id, current_seed, timestamp, EXPERIMENT_ID)
                                 save_trial_data(study_standard_df, 'standard', dataset_id, current_seed, timestamp, EXPERIMENT_ID)
@@ -491,11 +487,12 @@ def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, 
                     auc_score = np.mean(seed_results)
                     auc_score_std = np.std(seed_results)
                     
-                    if save_benchmark:
-                        auc_random = np.mean(seed_random_results)
-                        auc_random_std = np.std(seed_random_results)
+                    if save_benchmark and include_optuna_benchmark:
+                        # Use TPE iteration 0 as random baseline (extracted above)
+                        auc_random = np.mean(seed_random_results) if seed_random_results else None
+                        auc_random_std = np.std(seed_random_results) if seed_random_results else None
                         
-                        if include_optuna_benchmark and seed_optuna_warmstart_results and seed_optuna_standard_results:
+                        if seed_optuna_warmstart_results and seed_optuna_standard_results:
                             auc_optuna_warmstart = np.mean(seed_optuna_warmstart_results)
                             auc_optuna_warmstart_std = np.std(seed_optuna_warmstart_results)
                             auc_optuna_standard = np.mean(seed_optuna_standard_results)
@@ -523,37 +520,8 @@ def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, 
                     
                     print(f"✅ Zero-Shot AUC: {auc_score:.4f}")
                     
-                    # Benchmark against random hyperparameters
-                    if save_benchmark:
-                        print(f"\n🔄 Running random benchmark...")
-                        
-                        # Generate random hyperparameters using ModelConfigs
-                        random_params = ModelConfigs.generate_random_hyperparameters(
-                            model_type='decision_tree',
-                            dataset_size=X.shape[0],
-                            n_features=X.shape[1],
-                            random_state=42
-                        )
-                        
-                        print("📊 Random hyperparameters:")
-                        for param, value in random_params.items():
-                            print(f"  {param}: {value}")
-                        
-                        # Train with random hyperparameters
-                        dt_random = DecisionTreeClassifier(**random_params, random_state=42)
-                        dt_random.fit(X_train, y_train)
-                        y_pred_proba_random = dt_random.predict_proba(X_test)
-                        
-                        # Calculate random AUC
-                        if y_pred_proba_random.shape[1] == 2:
-                            auc_random = roc_auc_score(y_test, y_pred_proba_random[:, 1])
-                        else:
-                            auc_random = roc_auc_score(y_test, y_pred_proba_random, multi_class='ovr', average='weighted')
-                        
-                        print(f"📊 Random AUC: {auc_random:.4f}")
-                        
-                        # NEW: Optuna TPE benchmarks (single seed)
-                        if include_optuna_benchmark:
+                    # Optuna TPE benchmarks (required for random baseline)
+                    if save_benchmark and include_optuna_benchmark:
                             print(f"\n🔄 Running Optuna TPE benchmarks...")
                             
                             from zerotune.core.optimization import optimize_hyperparameters

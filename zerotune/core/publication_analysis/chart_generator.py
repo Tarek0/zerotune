@@ -3,6 +3,14 @@ Chart Generator for Publication Analysis
 
 This module generates publication-ready convergence charts showing performance
 across optimization iterations for different methods (ZeroTune, TPE, etc.).
+
+METHODOLOGICAL NOTE - Random Baseline:
+The "Random" baseline in charts represents TPE iteration 0 performance, not separate
+random hyperparameter generation. This ensures:
+1. Same evaluation pipeline (train/val split, model random_state) 
+2. Same parameter distribution (Optuna sampling)
+3. True baseline representing TPE's actual starting point
+This methodological choice makes publication results more defensible in peer review.
 """
 
 import os
