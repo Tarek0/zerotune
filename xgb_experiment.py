@@ -329,26 +329,23 @@ def evaluate_hyperparameters(params, X_train, y_train, X_test, y_test, random_st
     except Exception:
         return 0.0
 
-def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, n_seeds=1, include_optuna_benchmark=False, optuna_n_trials=20, test_dataset_ids=None):
+def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, n_seeds=1, optuna_n_trials=20, test_dataset_ids=None):
     """
     Test the zero-shot predictor on validation datasets
     
     METHODOLOGICAL NOTE - Random Baseline Selection:
-    We use TPE iteration 0 as the random baseline (requires include_optuna_benchmark=True) for:
+    We use TPE iteration 0 as the random baseline for:
     1. Evaluation Consistency: Same train/val split and model random_state as optimization trials
     2. True Baseline: Represents actual starting point of TPE optimization being compared
     3. Parameter Distribution: Uses same Optuna sampling as other trials (no distribution mismatch)
     4. Statistical Rigor: Same evaluation pipeline ensures fair comparison
     This makes publication results more methodologically sound and defensible in peer review.
     
-    NOTE: Random baseline requires --optuna flag. Without it, only zero-shot predictions are evaluated.
-    
     Args:
         mode: "test" or "full" - determines which model to load
         model_path: Optional path to specific model file
         save_benchmark: Whether to save benchmark results
         n_seeds: Number of random seeds to use for evaluation
-        include_optuna_benchmark: Whether to include Optuna TPE benchmarking
         optuna_n_trials: Number of trials for Optuna optimization
         test_dataset_ids: Optional list of specific dataset IDs to test on
     """
@@ -493,8 +490,8 @@ def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, 
                     
                     # Random baseline will be extracted from TPE iteration 0 below
                     
-                    # Optuna benchmarks (required for random baseline)
-                    if save_benchmark and include_optuna_benchmark:
+                    # Optuna benchmarks (always enabled for methodological consistency)
+                    if save_benchmark:
                         # Get param_grid for Optuna
                         param_grid = ModelConfigs.get_param_grid_for_optimization('xgboost', X_train.shape)
                         
@@ -588,7 +585,7 @@ def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, 
                 }
                 
                 # Add Optuna results if available
-                if include_optuna_benchmark and auc_optuna_warmstart is not None and auc_optuna_standard is not None:
+                if auc_optuna_warmstart is not None and auc_optuna_standard is not None:
                     result_dict['auc_optuna_warmstart'] = auc_optuna_warmstart
                     result_dict['auc_optuna_standard'] = auc_optuna_standard
                     
