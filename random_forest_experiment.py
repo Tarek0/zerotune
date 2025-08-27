@@ -537,12 +537,14 @@ def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, 
                     auc_optuna_warmstart = None
                     auc_optuna_standard = None
                 
-                # Show concise results
+                # Show concise results and calculate uplift metrics
                 if auc_random_mean is not None:
                     uplift = auc_predicted_mean - auc_random_mean
                     uplift_pct = (uplift / auc_random_mean * 100) if auc_random_mean > 0 else 0
                     tqdm.write(f"✅ {dataset_name}: AUC {auc_predicted_mean:.4f} (vs random {auc_random_mean:.4f}, +{uplift_pct:.1f}%)")
                 else:
+                    uplift = None
+                    uplift_pct = None
                     tqdm.write(f"✅ {dataset_name}: AUC {auc_predicted_mean:.4f} (no random baseline - requires --optuna)")
                 
                 # Store results with hyperparameters for debugging

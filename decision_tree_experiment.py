@@ -487,6 +487,21 @@ def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, 
                     auc_score = np.mean(seed_results)
                     auc_score_std = np.std(seed_results)
                     
+                    # Initialize benchmark variables with defaults (prevents NameError when save_benchmark=True but include_optuna_benchmark=False)
+                    auc_random = None
+                    auc_random_std = None
+                    random_params = {}
+                    uplift_random = None
+                    uplift_random_pct = None
+                    auc_optuna_warmstart = None
+                    auc_optuna_warmstart_std = None
+                    auc_optuna_standard = None
+                    auc_optuna_standard_std = None
+                    uplift_vs_optuna_std = None
+                    uplift_vs_optuna_std_pct = None
+                    uplift_zs_vs_optuna_ws = None
+                    uplift_zs_vs_optuna_ws_pct = None
+                    
                     if save_benchmark and include_optuna_benchmark:
                         # Use TPE iteration 0 as random baseline (extracted above)
                         auc_random = np.mean(seed_random_results) if seed_random_results else None
@@ -497,6 +512,17 @@ def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, 
                             auc_optuna_warmstart_std = np.std(seed_optuna_warmstart_results)
                             auc_optuna_standard = np.mean(seed_optuna_standard_results)
                             auc_optuna_standard_std = np.std(seed_optuna_standard_results)
+                            
+                            # Calculate uplift metrics
+                            uplift_vs_optuna_std = auc_optuna_warmstart - auc_optuna_standard
+                            uplift_vs_optuna_std_pct = (uplift_vs_optuna_std / auc_optuna_standard * 100) if auc_optuna_standard > 0 else 0
+                            uplift_zs_vs_optuna_ws = auc_score - auc_optuna_warmstart
+                            uplift_zs_vs_optuna_ws_pct = (uplift_zs_vs_optuna_ws / auc_optuna_warmstart * 100) if auc_optuna_warmstart > 0 else 0
+                        
+                        # Calculate random uplift metrics
+                        if auc_random is not None:
+                            uplift_random = auc_score - auc_random
+                            uplift_random_pct = (uplift_random / auc_random * 100) if auc_random > 0 else 0
                     
                     # Show concise results for multi-seed
                     tqdm.write(f"✅ {dataset_name}: AUC {auc_score:.4f} ± {auc_score_std:.4f} ({n_seeds} seeds)")
