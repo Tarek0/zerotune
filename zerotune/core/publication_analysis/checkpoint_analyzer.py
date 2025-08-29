@@ -406,7 +406,8 @@ class CheckpointAnalyzer:
                     for z_score, r_score in zip(zeroshot_scores, random_scores):
                         # For single paired values, we can't do t-test, so we just check if ZT wins
                         # and consider it "significant" only if ZT actually wins on this dataset
-                        if z_score > r_score:
+                        diff = abs(z_score - r_score)
+                        if diff > 0.01 and z_score > r_score:
                             significant_datasets += 1
                     
                     # Sig % should be based on datasets where method actually wins AND is significant
@@ -588,7 +589,8 @@ class CheckpointAnalyzer:
                     for z_score, r_score in zip(zeroshot_scores, random_scores):
                         # For single paired values, we can't do t-test, so we just check if ZT wins
                         # and consider it "significant" only if ZT actually wins on this dataset
-                        if z_score > r_score:
+                        diff = abs(z_score - r_score)
+                        if diff > 0.01 and z_score > r_score:
                             significant_datasets += 1
                     
                     # Sig % should be based on datasets where method actually wins AND is significant
