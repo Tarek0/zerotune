@@ -692,7 +692,7 @@ def test_zero_shot_predictor(mode="test", model_path=None, save_benchmark=True, 
         # Use the same timestamp as trial data for consistency
         if 'timestamp' not in locals() or timestamp is None:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        benchmark_suffix = "_optuna" if include_optuna_benchmark else ""
+        benchmark_suffix = "_optuna"  # Always include optuna suffix
         csv_filename = f"benchmarks/benchmark_results_rf_kb_v1_{mode}{benchmark_suffix}_{timestamp}.csv"
         
         df = pd.DataFrame(results)
