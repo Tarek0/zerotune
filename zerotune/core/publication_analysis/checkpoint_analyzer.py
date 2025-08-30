@@ -35,7 +35,8 @@ class CheckpointAnalyzer:
         warmstart_path: str, 
         standard_path: str,
         algorithm_name: str = "DecisionTree",
-        benchmark_data: Optional[pd.DataFrame] = None
+        benchmark_data: Optional[pd.DataFrame] = None,
+        statistical_results: Optional[Dict] = None
     ) -> Dict[str, pd.DataFrame]:
         """
         Analyze convergence behavior from trial data files.
@@ -73,7 +74,7 @@ class CheckpointAnalyzer:
             return {}
         
         # Generate convergence comparison tables
-        convergence_tables = self.generate_convergence_tables(checkpoint_results, benchmark_data)
+        convergence_tables = self.generate_convergence_tables(checkpoint_results, benchmark_data, statistical_results)
         
         return {
             'checkpoint_scores': checkpoint_results,
@@ -192,7 +193,7 @@ class CheckpointAnalyzer:
         print(f"✅ Extracted checkpoint scores for {len(checkpoint_data)} methods")
         return checkpoint_data
     
-    def generate_convergence_tables(self, checkpoint_data: Dict, benchmark_data: Optional[pd.DataFrame] = None) -> Dict[str, pd.DataFrame]:
+    def generate_convergence_tables(self, checkpoint_data: Dict, benchmark_data: Optional[pd.DataFrame] = None, statistical_results: Optional[Dict] = None) -> Dict[str, pd.DataFrame]:
         """
         Generate convergence comparison tables from checkpoint data.
         
@@ -217,10 +218,10 @@ class CheckpointAnalyzer:
         tables['statistical_summary'] = self._create_statistical_summary_table(checkpoint_data)
         
         # 4. Aggregated comparison table: ZT+TPE vs TPE (warm-started vs standard)
-        tables['aggregated_comparison'] = self._create_aggregated_comparison_table(checkpoint_data, benchmark_data)
+        tables['aggregated_comparison'] = self._create_aggregated_comparison_table(checkpoint_data, benchmark_data, statistical_results)
         
         # 5. NEW: ZT vs TPE comparison table (zero-shot vs standard TPE)
-        tables['zt_vs_tpe_comparison'] = self._create_zt_vs_tpe_comparison_table(checkpoint_data, benchmark_data)
+        tables['zt_vs_tpe_comparison'] = self._create_zt_vs_tpe_comparison_table(checkpoint_data, benchmark_data, statistical_results)
         
         return tables
     
@@ -365,7 +366,7 @@ class CheckpointAnalyzer:
         
         return pd.DataFrame(summary_data)
     
-    def _create_aggregated_comparison_table(self, checkpoint_data: Dict, benchmark_data: Optional[pd.DataFrame] = None) -> pd.DataFrame:
+    def _create_aggregated_comparison_table(self, checkpoint_data: Dict, benchmark_data: Optional[pd.DataFrame] = None, statistical_results: Optional[Dict] = None) -> pd.DataFrame:
         """
         Create an aggregated comparison table with Best % and Sig % columns.
         
@@ -397,29 +398,56 @@ class CheckpointAnalyzer:
                 zeroshot_best_pct = (zeroshot_wins / len(zeroshot_scores)) * 100
                 tpe_best_pct = (tpe_wins / len(zeroshot_scores)) * 100
                 
-                # Calculate Sig % (per-dataset significance)
+                # Calculate Sig % using actual statistical significance results for consistency
                 try:
-                    significant_datasets = 0
-                    total_datasets = len(zeroshot_scores)
-                    
-                    # For checkpoint 0, we have paired scores per dataset
-                    for z_score, r_score in zip(zeroshot_scores, random_scores):
-                        # For single paired values, we can't do t-test, so we just check if ZT wins
-                        # and consider it "significant" only if ZT actually wins on this dataset
-                        diff = abs(z_score - r_score)
-                        if diff > 0.01 and z_score > r_score:
-                            significant_datasets += 1
-                    
-                    # Sig % should be based on datasets where method actually wins AND is significant
-                    # For checkpoint 0 (single scores per dataset), significance = winning
-                    zeroshot_sig_pct = (significant_datasets / total_datasets) * 100 if zeroshot_wins > 0 else 0.0
-                    tpe_sig_pct = ((total_datasets - significant_datasets) / total_datasets) * 100 if tpe_wins > 0 else 0.0
+                    # Use statistical significance results from stats analyzer if available
+                    if statistical_results and 'zeroshot_vs_random' in statistical_results:
+                        zt_vs_random_results = statistical_results['zeroshot_vs_random']
+                        
+                        # Count datasets where ZT is both winning and statistically significant
+                        significant_zt_datasets = 0
+                        significant_tpe_datasets = 0
+                        total_datasets = len(zeroshot_scores)
+                        
+                        # Match by dataset_id for proper significance lookup
+                        for i, (z_score, r_score) in enumerate(zip(zeroshot_scores, random_scores)):
+                            # Get dataset_id for this score pair
+                            if benchmark_data is not None and i < len(benchmark_data):
+                                dataset_id = benchmark_data.iloc[i]['dataset_id']
+                                
+                                # Find corresponding statistical result
+                                sig_row = zt_vs_random_results[zt_vs_random_results['dataset_id'] == dataset_id]
+                                if len(sig_row) > 0:
+                                    is_significant = sig_row.iloc[0].get('significant', False)
+                                    if is_significant:
+                                        if z_score > r_score:
+                                            significant_zt_datasets += 1
+                                        else:
+                                            significant_tpe_datasets += 1
+                        
+                        zeroshot_sig_pct = (significant_zt_datasets / total_datasets) * 100 if total_datasets > 0 else 0.0
+                        tpe_sig_pct = (significant_tpe_datasets / total_datasets) * 100 if total_datasets > 0 else 0.0
+                    else:
+                        # Fallback to difference threshold if no statistical results available
+                        significant_datasets = 0
+                        total_datasets = len(zeroshot_scores)
+                        
+                        for z_score, r_score in zip(zeroshot_scores, random_scores):
+                            # Use same significance threshold as other checkpoints: difference > 1% (0.01 AUC points)
+                            diff = abs(z_score - r_score)
+                            if diff > 0.01:
+                                if z_score > r_score:
+                                    significant_datasets += 1
+                        
+                        zeroshot_sig_pct = (significant_datasets / total_datasets) * 100 if zeroshot_wins > 0 else 0.0
+                        tpe_sig_pct = ((total_datasets - significant_datasets) / total_datasets) * 100 if tpe_wins > 0 else 0.0
                     
                     # Ensure Sig % never exceeds Best %
                     zeroshot_sig_pct = min(zeroshot_sig_pct, zeroshot_best_pct)
                     tpe_sig_pct = min(tpe_sig_pct, tpe_best_pct)
                     
-                except:
+                except Exception as e:
+                    print(f"⚠️  Error calculating significance for checkpoint 0: {str(e)}")
                     zeroshot_sig_pct = 0.0
                     tpe_sig_pct = 0.0
                 
@@ -552,13 +580,14 @@ class CheckpointAnalyzer:
         
         return pd.DataFrame(aggregated_data)
     
-    def _create_zt_vs_tpe_comparison_table(self, checkpoint_data: Dict, benchmark_data: Optional[pd.DataFrame] = None) -> pd.DataFrame:
+    def _create_zt_vs_tpe_comparison_table(self, checkpoint_data: Dict, benchmark_data: Optional[pd.DataFrame] = None, statistical_results: Optional[Dict] = None) -> pd.DataFrame:
         """
         Create a table comparing ZT (Zero-shot TPE) vs TPE (Standard TPE) convergence.
         
         Args:
             checkpoint_data: Dictionary with checkpoint scores
             benchmark_data: Optional benchmark data for checkpoint 0
+            statistical_results: Dictionary containing statistical significance results from stats analyzer
             
         Returns:
             DataFrame with ZT vs TPE comparison results
@@ -580,29 +609,56 @@ class CheckpointAnalyzer:
                 zeroshot_best_pct = (zeroshot_wins / len(zeroshot_scores)) * 100
                 tpe_best_pct = (tpe_wins / len(zeroshot_scores)) * 100
                 
-                # Calculate Sig % (per-dataset significance)
+                # Calculate Sig % using actual statistical significance results for consistency
                 try:
-                    significant_datasets = 0
-                    total_datasets = len(zeroshot_scores)
-                    
-                    # For checkpoint 0, we have paired scores per dataset
-                    for z_score, r_score in zip(zeroshot_scores, random_scores):
-                        # For single paired values, we can't do t-test, so we just check if ZT wins
-                        # and consider it "significant" only if ZT actually wins on this dataset
-                        diff = abs(z_score - r_score)
-                        if diff > 0.01 and z_score > r_score:
-                            significant_datasets += 1
-                    
-                    # Sig % should be based on datasets where method actually wins AND is significant
-                    # For checkpoint 0 (single scores per dataset), significance = winning
-                    zeroshot_sig_pct = (significant_datasets / total_datasets) * 100 if zeroshot_wins > 0 else 0.0
-                    tpe_sig_pct = ((total_datasets - significant_datasets) / total_datasets) * 100 if tpe_wins > 0 else 0.0
+                    # Use statistical significance results from stats analyzer if available
+                    if statistical_results and 'zeroshot_vs_random' in statistical_results:
+                        zt_vs_random_results = statistical_results['zeroshot_vs_random']
+                        
+                        # Count datasets where ZT is both winning and statistically significant
+                        significant_zt_datasets = 0
+                        significant_tpe_datasets = 0
+                        total_datasets = len(zeroshot_scores)
+                        
+                        # Match by dataset_id for proper significance lookup
+                        for i, (z_score, r_score) in enumerate(zip(zeroshot_scores, random_scores)):
+                            # Get dataset_id for this score pair
+                            if benchmark_data is not None and i < len(benchmark_data):
+                                dataset_id = benchmark_data.iloc[i]['dataset_id']
+                                
+                                # Find corresponding statistical result
+                                sig_row = zt_vs_random_results[zt_vs_random_results['dataset_id'] == dataset_id]
+                                if len(sig_row) > 0:
+                                    is_significant = sig_row.iloc[0].get('significant', False)
+                                    if is_significant:
+                                        if z_score > r_score:
+                                            significant_zt_datasets += 1
+                                        else:
+                                            significant_tpe_datasets += 1
+                        
+                        zeroshot_sig_pct = (significant_zt_datasets / total_datasets) * 100 if total_datasets > 0 else 0.0
+                        tpe_sig_pct = (significant_tpe_datasets / total_datasets) * 100 if total_datasets > 0 else 0.0
+                    else:
+                        # Fallback to difference threshold if no statistical results available
+                        significant_datasets = 0
+                        total_datasets = len(zeroshot_scores)
+                        
+                        for z_score, r_score in zip(zeroshot_scores, random_scores):
+                            # Use same significance threshold as other checkpoints: difference > 1% (0.01 AUC points)
+                            diff = abs(z_score - r_score)
+                            if diff > 0.01:
+                                if z_score > r_score:
+                                    significant_datasets += 1
+                        
+                        zeroshot_sig_pct = (significant_datasets / total_datasets) * 100 if zeroshot_wins > 0 else 0.0
+                        tpe_sig_pct = ((total_datasets - significant_datasets) / total_datasets) * 100 if tpe_wins > 0 else 0.0
                     
                     # Ensure Sig % never exceeds Best %
                     zeroshot_sig_pct = min(zeroshot_sig_pct, zeroshot_best_pct)
                     tpe_sig_pct = min(tpe_sig_pct, tpe_best_pct)
                     
-                except:
+                except Exception as e:
+                    print(f"⚠️  Error calculating significance for checkpoint 0: {str(e)}")
                     zeroshot_sig_pct = 0.0
                     tpe_sig_pct = 0.0
                 

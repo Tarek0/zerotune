@@ -136,7 +136,8 @@ class PublicationResultsProcessor:
                 warmstart_trials_path, 
                 standard_trials_path,
                 algorithm_name,
-                benchmark_data=df_results
+                benchmark_data=df_results,
+                statistical_results=comparison_results
             )
             
             if convergence_results:
