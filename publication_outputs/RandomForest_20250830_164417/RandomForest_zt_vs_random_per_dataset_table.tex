@@ -1,0 +1,31 @@
+\begin{table}[htbp]
+\caption[RandomForest ZT vs Random search: AUC performance comparison]%
+{RandomForest ZT vs Random search: Performance comparison (AUC). 
+AUC scores are averaged over 50 runs. 
+\textbf{Bold} values represent the highest performance, and \underline{underlined} values represent significant differences.}
+\label{table:randomforest-baseline-random}
+\vskip 0.1in
+\begin{center}
+\begin{small}
+\begin{sc}
+\begin{tabular}{l r r r}
+\toprule
+\textbf{Dataset} & \textbf{ZT} & \textbf{\makecell{Random\\Search}} & \textbf{Uplift (\%)} \\
+\midrule
+917    & \underline{\textbf{0.9512}} & 0.9082 & 4.74 \\
+1049    & \underline{\textbf{0.9228}} & 0.9076 & 1.67 \\
+1111    & 0.8148 & \textbf{0.8155} & -0.08 \\
+1464    & \textbf{0.7335} & 0.7273 & 0.86 \\
+1494    & \underline{\textbf{0.8977}} & 0.8780 & 2.25 \\
+1510    & \textbf{0.9850} & 0.9843 & 0.07 \\
+1558    & \underline{\textbf{0.8679}} & 0.8458 & 2.62 \\
+4534    & \underline{\textbf{0.9705}} & 0.9677 & 0.30 \\
+23381    & \textbf{0.6000} & 0.5949 & 0.86 \\
+40536    & \textbf{0.8326} & 0.8322 & 0.05 \\
+\bottomrule
+\end{tabular}
+\end{sc}
+\end{small}
+\end{center}
+\vskip -0.1in
+\end{table}

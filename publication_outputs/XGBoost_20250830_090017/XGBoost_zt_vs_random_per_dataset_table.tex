@@ -1,0 +1,31 @@
+\begin{table}[htbp]
+\caption[XGBoost ZT vs Random search: AUC performance comparison]%
+{XGBoost ZT vs Random search: Performance comparison (AUC). 
+AUC scores are averaged over 50 runs. 
+\textbf{Bold} values represent the highest performance, and \underline{underlined} values represent significant differences.}
+\label{table:xgboost-baseline-random}
+\vskip 0.1in
+\begin{center}
+\begin{small}
+\begin{sc}
+\begin{tabular}{l r r r}
+\toprule
+\textbf{Dataset} & \textbf{ZT} & \textbf{\makecell{Random\\Search}} & \textbf{Uplift (\%)} \\
+\midrule
+917    & \underline{\textbf{0.9727}} & 0.9680 & 0.48 \\
+1049    & \underline{\textbf{0.9472}} & 0.9412 & 0.64 \\
+1111    & \underline{\textbf{0.8080}} & 0.7912 & 2.11 \\
+1464    & \textbf{0.6941} & 0.6886 & 0.80 \\
+1494    & \underline{\textbf{0.9295}} & 0.9259 & 0.39 \\
+1510    & 0.9937 & \textbf{0.9938} & -0.01 \\
+1558    & \underline{\textbf{0.9029}} & 0.8921 & 1.21 \\
+4534    & \underline{\textbf{0.9970}} & 0.9952 & 0.18 \\
+23381    & 0.5661 & \textbf{0.5726} & -1.14 \\
+40536    & \underline{\textbf{0.8669}} & 0.8620 & 0.57 \\
+\bottomrule
+\end{tabular}
+\end{sc}
+\end{small}
+\end{center}
+\vskip -0.1in
+\end{table}
