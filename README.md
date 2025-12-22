@@ -175,6 +175,33 @@ poetry run python publication_analysis.py XGBoost --auto-detect
 
 See [PUBLICATION_CHARTS_GUIDE.md](PUBLICATION_CHARTS_GUIDE.md) for detailed documentation.
 
+## 🛠️ Advanced Usage
+
+### Building Custom Knowledge Bases
+
+```python
+from zerotune import ZeroTune
+
+# Build knowledge base from your datasets
+zt = ZeroTune(model_type='xgboost', kb_path='my_knowledge_base.json')
+dataset_ids = [31, 38, 44, 52, 151]  # OpenML dataset IDs
+kb = zt.build_knowledge_base(dataset_ids=dataset_ids, n_iter=20)
+```
+
+### Training New Predictors
+
+```python
+from zerotune.core.predictor_training import train_predictor_from_knowledge_base
+
+# Train predictor from knowledge base
+model_path = train_predictor_from_knowledge_base(
+    kb_path='my_knowledge_base.json',
+    model_name='xgboost',
+    task_type='binary',
+    top_k_per_seed=3
+)
+```
+
 ## 🧠 LLM Surrogate HPO (Experimental)
 
 For users who want **sequential HPO with LLM reasoning** instead of zero-shot prediction. Uses GPT models as surrogate functions to recommend hyperparameters based on trial history.
@@ -226,33 +253,6 @@ export OPENAI_API_KEY="your-key-here"
 | LLM vs TPE | **50%** |
 
 *LLM achieves highest mean score across all datasets with ~160s per optimization.*
-
-## 🛠️ Advanced Usage
-
-### Building Custom Knowledge Bases
-
-```python
-from zerotune import ZeroTune
-
-# Build knowledge base from your datasets
-zt = ZeroTune(model_type='xgboost', kb_path='my_knowledge_base.json')
-dataset_ids = [31, 38, 44, 52, 151]  # OpenML dataset IDs
-kb = zt.build_knowledge_base(dataset_ids=dataset_ids, n_iter=20)
-```
-
-### Training New Predictors
-
-```python
-from zerotune.core.predictor_training import train_predictor_from_knowledge_base
-
-# Train predictor from knowledge base
-model_path = train_predictor_from_knowledge_base(
-    kb_path='my_knowledge_base.json',
-    model_name='xgboost',
-    task_type='binary',
-    top_k_per_seed=3
-)
-```
 
 ## 🤝 Contributing
 
