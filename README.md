@@ -218,7 +218,7 @@ sampler = LLMSurrogateSampler(
     model_type='decision_tree',
     X=X, y=y,
     kb_path='knowledge_base/kb_decision_tree_dt_kb_v1_full.json',
-    llm_model='gpt-4o-mini',
+    llm_model='gpt-5-mini-2025-08-07',
     n_zerotune_initial=1,  # Start with ZeroTune prediction
     n_random_initial=5,     # Then random exploration
 )
