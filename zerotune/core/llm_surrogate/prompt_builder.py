@@ -11,7 +11,12 @@ from typing import Optional
 import optuna
 
 from zerotune.core.llm_surrogate.param_guides import get_param_guide
-from zerotune.core.llm_surrogate.kb_stats import compute_kb_statistics
+from zerotune.core.llm_surrogate.kb_stats import (
+    compute_kb_statistics,
+    compute_conditional_statistics,
+    compute_param_correlations,
+    get_dataset_size_category,
+)
 from zerotune.core.llm_surrogate.retrieval import (
     retrieve_similar_datasets,
     format_similar_datasets_for_prompt,
@@ -116,6 +121,8 @@ class PromptBuilder:
         
         # Compute KB statistics (cached)
         self.kb_statistics = compute_kb_statistics(kb_path, model_type)
+        self.conditional_stats = compute_conditional_statistics(kb_path, model_type)
+        self.correlations = compute_param_correlations(kb_path, model_type)
         
         # Model class name mapping
         self._model_class_names = {
@@ -128,6 +135,7 @@ class PromptBuilder:
         self,
         meta_features: dict,
         search_space: dict,
+        zt_prior: Optional[dict] = None,
     ) -> str:
         """
         Build prompt for initial (zero-shot) recommendation.
@@ -135,6 +143,7 @@ class PromptBuilder:
         Args:
             meta_features: Dataset meta-features dictionary
             search_space: Optuna search space or parameter grid
+            zt_prior: Optional ZeroTune zero-shot prediction
             
         Returns:
             Formatted prompt string
@@ -150,6 +159,12 @@ class PromptBuilder:
         meta_str = self._format_meta_features(meta_features)
         search_str = self._format_search_space(search_space)
         similar_str = format_similar_datasets_for_prompt(similar)
+        prior_str = self._format_zt_prior(zt_prior)
+        
+        # New context
+        n_samples = meta_features.get('n_samples', 0)
+        cond_stats_str = self._format_conditional_stats(n_samples)
+        corr_str = self._format_correlations(meta_features)
         
         # Build prompt by concatenation to avoid format() issues with curly braces
         prompt = f"""You are an expert ML practitioner optimizing hyperparameters for a {model_class}.
@@ -158,8 +173,15 @@ class PromptBuilder:
 
 {self.kb_statistics}
 
+{cond_stats_str}
+
+{corr_str}
+
 ## Current Dataset Characteristics
 {meta_str}
+
+## ZeroTune Zero-Shot Prediction (Baseline Hypothesis)
+{prior_str}
 
 ## Search Space
 {search_str}
@@ -171,11 +193,12 @@ class PromptBuilder:
 Based on all the above context, recommend the FIRST set of hyperparameters to try.
 
 Consider:
-1. The dataset size category and appropriate complexity level
+1. The dataset size category and appropriate complexity level (see Historical Patterns)
 2. Risk of overfitting given the feature/sample ratio
 3. Class imbalance implications
 4. Patterns from similar datasets in the knowledge base
-5. The parameter interactions and heuristics from the guide
+5. The ZeroTune baseline hypothesis (does it align with your reasoning?)
+6. The parameter interactions and heuristics from the guide
 
 Provide step-by-step reasoning, then your recommended hyperparameters."""
         
@@ -186,6 +209,7 @@ Provide step-by-step reasoning, then your recommended hyperparameters."""
         meta_features: dict,
         search_space: dict,
         completed_trials: list,
+        zt_prior: Optional[dict] = None,
     ) -> str:
         """
         Build prompt for sequential recommendation based on trial history.
@@ -194,6 +218,7 @@ Provide step-by-step reasoning, then your recommended hyperparameters."""
             meta_features: Dataset meta-features dictionary
             search_space: Optuna search space or parameter grid
             completed_trials: List of completed Optuna trials
+            zt_prior: Optional ZeroTune zero-shot prediction
             
         Returns:
             Formatted prompt string
@@ -213,7 +238,13 @@ Provide step-by-step reasoning, then your recommended hyperparameters."""
         search_str = self._format_search_space(search_space)
         trial_str = self._format_trial_history(completed_trials)
         similar_str = format_similar_datasets_for_prompt(similar)
+        prior_str = self._format_zt_prior(zt_prior)
         n_trials = len(completed_trials)
+        
+        # New context
+        n_samples = meta_features.get('n_samples', 0)
+        cond_stats_str = self._format_conditional_stats(n_samples)
+        corr_str = self._format_correlations(meta_features)
         
         # Build prompt by concatenation to avoid format() issues
         prompt = f"""You are an expert ML practitioner optimizing hyperparameters for a {model_class}.
@@ -222,8 +253,15 @@ Provide step-by-step reasoning, then your recommended hyperparameters."""
 
 {self.kb_statistics}
 
+{cond_stats_str}
+
+{corr_str}
+
 ## Current Dataset Characteristics
 {meta_str}
+
+## ZeroTune Zero-Shot Prediction (Baseline Hypothesis)
+{prior_str}
 
 ## Search Space
 {search_str}
@@ -250,6 +288,7 @@ Analyze:
 2. Are there signs of overfitting (complex models performing worse)?
 3. Are there signs of underfitting (simple models plateaued)?
 4. Based on parameter interactions in the guide, what adjustments make sense?
+5. How does the ZeroTune baseline compare to the best trials found so far?
 
 Guidelines:
 - EXPLOIT: Stay close to best (e.g., if best has max_depth=8, try 7 or 9)
@@ -332,4 +371,69 @@ Provide all four recommendations with brief reasoning for each."""
         if len(sorted_trials) > max_trials:
             lines.append(f"... and {len(sorted_trials) - max_trials} more trials")
         
+        return "\n".join(lines)
+
+    def _format_zt_prior(self, zt_prior: Optional[dict]) -> str:
+        """Format ZeroTune prior prediction."""
+        if not zt_prior:
+            return "No ZeroTune prediction available for this dataset."
+        
+        lines = ["Based on the ZeroTune regression model (trained on historical data), the predicted optimal hyperparameters are:"]
+        params_str = ", ".join(
+            f"{k}={v:.3f}" if isinstance(v, float) else f"{k}={v}"
+            for k, v in sorted(zt_prior.items())
+        )
+        lines.append(f"**Predicted Config**: {params_str}")
+        lines.append("\nNote: This is a statistical baseline based on meta-feature patterns.")
+        lines.append("Use this as a starting hypothesis, but deviate if trial evidence suggests otherwise.")
+        
+        return "\n".join(lines)
+
+    def _format_conditional_stats(self, n_samples: int) -> str:
+        """Format conditional statistics based on dataset size."""
+        size_cat = get_dataset_size_category(n_samples)
+        stats = self.conditional_stats.get(size_cat, {})
+        
+        if not stats:
+            return f"No conditional statistics available for {size_cat} datasets."
+            
+        lines = [f"### Historical Patterns for {size_cat.upper()} Datasets (like yours)"]
+        
+        for param, stat in sorted(stats.items()):
+            lines.append(f"- {param}: median={stat['median']:.3f}, range=[{stat['min']:.3f}, {stat['max']:.3f}]")
+            
+        return "\n".join(lines)
+
+    def _format_correlations(self, meta_features: dict) -> str:
+        """Format parameter correlations relevant to this dataset."""
+        if not self.correlations:
+            return ""
+            
+        # Find strongest correlations
+        relevant_corrs = []
+        for (mf, param), corr in self.correlations.items():
+            if abs(corr) > 0.3:  # Only show meaningful correlations
+                relevant_corrs.append((mf, param, corr))
+        
+        if not relevant_corrs:
+            return ""
+            
+        # Sort by absolute correlation
+        relevant_corrs.sort(key=lambda x: abs(x[2]), reverse=True)
+        
+        lines = ["### Relevant Parameter Correlations (Global Patterns)"]
+        for mf, param, corr in relevant_corrs[:5]:  # Top 5
+            direction = "positive" if corr > 0 else "negative"
+            strength = "strong" if abs(corr) > 0.5 else "moderate"
+            lines.append(f"- {mf} has {strength} {direction} correlation with {param} (r={corr:.2f})")
+            
+            # Add specific context if possible
+            val = meta_features.get(mf)
+            if val is not None:
+                if corr > 0:
+                    implication = "higher" if val > 0 else "lower" # Simplified check, ideally compare to median
+                else:
+                    implication = "lower" if val > 0 else "higher"
+                # lines.append(f"  -> Your {mf}={val:.2f}, suggesting {implication} {param}")
+                
         return "\n".join(lines)

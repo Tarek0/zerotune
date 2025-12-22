@@ -311,10 +311,14 @@ class LLMSurrogateSampler(BaseSampler):
         try:
             if len(completed_trials) == 0:
                 # No history yet - use LLM initial recommendation
-                params = self._recommend_initial(simple_search_space)
+                # Pass ZeroTune prediction as prior if available
+                zt_params = self._get_zerotune_prediction()
+                params = self._recommend_initial(simple_search_space, zt_prior=zt_params)
             else:
                 # Sequential: LLM reasons based on full history
-                params = self._recommend_next(simple_search_space, completed_trials)
+                # Pass ZeroTune prediction as prior if available
+                zt_params = self._get_zerotune_prediction()
+                params = self._recommend_next(simple_search_space, completed_trials, zt_prior=zt_params)
             
             validated_params = self._validate_params(params, search_space)
             return validated_params
@@ -329,11 +333,12 @@ class LLMSurrogateSampler(BaseSampler):
             })
             return self._fallback_sampler.sample_relative(study, trial, search_space)
     
-    def _recommend_initial(self, search_space: dict) -> dict:
+    def _recommend_initial(self, search_space: dict, zt_prior: Optional[dict] = None) -> dict:
         """Get initial (zero-shot) recommendation from LLM."""
         prompt = self._prompt_builder.build_initial_prompt(
             meta_features=self._meta_features,
             search_space=search_space,
+            zt_prior=zt_prior,
         )
         
         # Call LLM with structured output
@@ -355,7 +360,7 @@ class LLMSurrogateSampler(BaseSampler):
         
         return params_dict
     
-    def _recommend_next(self, search_space: dict, completed_trials: list) -> dict:
+    def _recommend_next(self, search_space: dict, completed_trials: list, zt_prior: Optional[dict] = None) -> dict:
         """Get sequential recommendation from LLM based on trial history.
         
         Uses batch strategy (4 configs per LLM call):
@@ -384,6 +389,7 @@ class LLMSurrogateSampler(BaseSampler):
             meta_features=self._meta_features,
             search_space=search_space,
             completed_trials=completed_trials,
+            zt_prior=zt_prior,
         )
         
         response: HPORecommendation = self._structured_llm_sequential.invoke(prompt)

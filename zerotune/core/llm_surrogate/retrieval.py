@@ -138,12 +138,70 @@ def retrieve_similar_datasets(
             'best_params': result.get('best_hyperparameters', {}),
             'best_score': result.get('best_score', None),
             'dataset_id': dataset.get('id'),
+            'trials_dataframe': result.get('trials_dataframe', []),
         })
     
     # Sort by similarity (descending)
     similarities.sort(key=lambda x: x['similarity'], reverse=True)
     
     return similarities[:n_similar]
+
+
+def extract_trajectory_insights(trials: list) -> str:
+    """
+    Analyze trial history to find parameter changes that improved performance.
+    
+    Args:
+        trials: List of trial dictionaries (serialized dataframe)
+        
+    Returns:
+        Formatted string of insights
+    """
+    if not trials or len(trials) < 2:
+        return ""
+        
+    # Sort by trial number
+    sorted_trials = sorted(trials, key=lambda x: x.get('number', 0))
+    
+    best_score_so_far = -float('inf')
+    best_trial_so_far = None
+    insights = []
+    
+    for trial in sorted_trials:
+        score = trial.get('value', 0)
+        if score > best_score_so_far:
+            # Found an improvement
+            if best_trial_so_far is not None:
+                # Compare with previous best to see what changed
+                changes = []
+                for k, v in trial.items():
+                    if k.startswith('params_'):
+                        param_name = k.replace('params_', '')
+                        prev_val = best_trial_so_far.get(k)
+                        if prev_val != v:
+                            # Format change
+                            if isinstance(v, (int, float)) and isinstance(prev_val, (int, float)):
+                                if v > prev_val:
+                                    direction = "increased"
+                                else:
+                                    direction = "decreased"
+                                changes.append(f"{param_name} {direction}")
+                            else:
+                                changes.append(f"changed {param_name}")
+                
+                if changes:
+                    diff = score - best_score_so_far
+                    if diff > 0.01:  # Only significant improvements
+                        change_str = ", ".join(changes[:2])  # Limit to 2 changes
+                        insights.append(f"  - Improvement (+{diff:.3f}): {change_str}")
+            
+            best_score_so_far = score
+            best_trial_so_far = trial
+            
+    if not insights:
+        return ""
+        
+    return "\n" + "\n".join(insights[-3:])  # Show last 3 significant improvements
 
 
 def format_similar_datasets_for_prompt(similar_datasets: list[dict]) -> str:
@@ -164,6 +222,7 @@ def format_similar_datasets_for_prompt(similar_datasets: list[dict]) -> str:
         meta = ds.get('meta_features', {})
         params = ds.get('best_params', {})
         score = ds.get('best_score')
+        trials = ds.get('trials_dataframe', [])
         
         # Format imbalance ratio safely
         imb = meta.get('imbalance_ratio')
@@ -172,12 +231,16 @@ def format_similar_datasets_for_prompt(similar_datasets: list[dict]) -> str:
         # Format score safely
         score_str = f"{score:.4f}" if isinstance(score, (int, float)) else "N/A"
         
+        # Get trajectory insights
+        trajectory = extract_trajectory_insights(trials)
+        trajectory_str = f"\n**Trajectory Insights**:{trajectory}" if trajectory else ""
+        
         lines.append(f"""
 ### Similar Dataset {i}: {ds['name']} (similarity: {ds['similarity']:.3f})
 - Samples: {meta.get('n_samples', 'N/A')}, Features: {meta.get('n_features', 'N/A')}
 - Imbalance ratio: {imb_str}
 - Best hyperparameters found: {_format_params(params)}
-- Best score achieved: {score_str}""")
+- Best score achieved: {score_str}{trajectory_str}""")
     
     return "\n".join(lines)
 
