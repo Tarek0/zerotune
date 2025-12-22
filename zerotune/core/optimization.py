@@ -280,7 +280,8 @@ def optimize_hyperparameters(
     verbose: bool = True,
     warm_start_configs: Optional[List[HyperParams]] = None,
     dataset_meta_params: Optional[Dict[str, Any]] = None,
-    model_random_state: Optional[int] = None
+    model_random_state: Optional[int] = None,
+    sampler: Optional['optuna.samplers.BaseSampler'] = None
 ) -> Tuple[HyperParams, float, List[Dict[str, Any]], 'pd.DataFrame']:
     """
     Optimize hyperparameters using Optuna with warm-starting capabilities.
@@ -298,6 +299,8 @@ def optimize_hyperparameters(
         warm_start_configs: Optional list of hyperparameter configurations to warm-start from
         dataset_meta_params: Optional dictionary of dataset meta-parameters for relative parameter conversion
         model_random_state: Optional random state for model initialization (for consistency with benchmark)
+        sampler: Optional custom Optuna sampler (e.g., LLMSurrogateSampler). 
+                 If None, defaults to TPESampler.
         
     Returns:
         A tuple containing:
@@ -334,10 +337,14 @@ def optimize_hyperparameters(
     if verbose:
         print(f"Running optimization with {n_iter} trials")
     
+    # Use provided sampler or default to TPE
+    if sampler is None:
+        sampler = optuna.samplers.TPESampler(seed=random_state)
+    
     # Create Optuna study
     study = optuna.create_study(
         direction="maximize",
-        sampler=optuna.samplers.TPESampler(seed=random_state)
+        sampler=sampler
     )
     
     # Add warm-start configurations if provided

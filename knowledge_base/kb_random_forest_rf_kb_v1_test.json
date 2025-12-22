@@ -1132,7 +1132,18 @@
       },
       "created_at": 1754659047.8951628,
       "updated_at": 1754659047.8951628,
-      "id": 31
+      "id": 31,
+      "best_config_summary": {
+        "params": {
+          "n_estimators": 136,
+          "max_depth": 0.8947368421052632,
+          "min_samples_split": 0.0862914613155527,
+          "min_samples_leaf": 0.018270621693240018,
+          "max_features": 0.8901192790441667
+        },
+        "score": 0.8070681572304363,
+        "model_type": "random_forest"
+      }
     },
     {
       "name": "spambase",
@@ -1162,7 +1173,18 @@
       },
       "created_at": 1754659076.822787,
       "updated_at": 1754659076.822787,
-      "id": 44
+      "id": 44,
+      "best_config_summary": {
+        "params": {
+          "n_estimators": 134,
+          "max_depth": 0.5833333333333334,
+          "min_samples_split": 0.04280243188822451,
+          "min_samples_leaf": 0.006175942553264742,
+          "max_features": 0.17810963890577594
+        },
+        "score": 0.9751509005746295,
+        "model_type": "random_forest"
+      }
     }
   ],
   "created_at": 1754659040.320151,

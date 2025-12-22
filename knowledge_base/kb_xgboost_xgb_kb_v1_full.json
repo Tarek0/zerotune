@@ -8282,7 +8282,18 @@
       },
       "created_at": 1754567572.054451,
       "updated_at": 1754567572.054452,
-      "id": 31
+      "id": 31,
+      "best_config_summary": {
+        "params": {
+          "n_estimators": 22,
+          "max_depth": 0.21052631578947367,
+          "learning_rate": 0.4605385778821478,
+          "subsample": 0.5953483864771295,
+          "colsample_bytree": 0.5197567036909903
+        },
+        "score": 0.7646351724966943,
+        "model_type": "xgboost"
+      }
     },
     {
       "name": "sick",
@@ -8312,7 +8323,18 @@
       },
       "created_at": 1754567579.722374,
       "updated_at": 1754567579.722374,
-      "id": 38
+      "id": 38,
+      "best_config_summary": {
+        "params": {
+          "n_estimators": 79,
+          "max_depth": 0.8695652173913043,
+          "learning_rate": 0.1505582134633089,
+          "subsample": 0.9975428753113992,
+          "colsample_bytree": 0.8582752279527708
+        },
+        "score": 0.9959260074873377,
+        "model_type": "xgboost"
+      }
     },
     {
       "name": "spambase",
@@ -8342,7 +8364,18 @@
       },
       "created_at": 1754567600.167558,
       "updated_at": 1754567600.167558,
-      "id": 44
+      "id": 44,
+      "best_config_summary": {
+        "params": {
+          "n_estimators": 109,
+          "max_depth": 0.3333333333333333,
+          "learning_rate": 0.09909864525654768,
+          "subsample": 0.9344497008603093,
+          "colsample_bytree": 0.8153418095111766
+        },
+        "score": 0.9877830894780046,
+        "model_type": "xgboost"
+      }
     },
     {
       "name": "trains",
@@ -8372,7 +8405,18 @@
       },
       "created_at": 1754567601.570831,
       "updated_at": 1754567601.570831,
-      "id": 52
+      "id": 52,
+      "best_config_summary": {
+        "params": {
+          "n_estimators": 100,
+          "max_depth": 1.0,
+          "learning_rate": 0.36626497696389115,
+          "subsample": 0.7993292420985183,
+          "colsample_bytree": 0.5780093202212182
+        },
+        "score": 0.5,
+        "model_type": "xgboost"
+      }
     },
     {
       "name": "electricity",
@@ -8402,7 +8446,18 @@
       },
       "created_at": 1754567808.41371,
       "updated_at": 1754567808.413711,
-      "id": 151
+      "id": 151,
+      "best_config_summary": {
+        "params": {
+          "n_estimators": 250,
+          "max_depth": 0.6333333333333333,
+          "learning_rate": 0.15357118333099162,
+          "subsample": 0.9980454254291643,
+          "colsample_bytree": 0.9985408682105867
+        },
+        "score": 0.9873937488755967,
+        "model_type": "xgboost"
+      }
     },
     {
       "name": "adult",
@@ -8432,7 +8487,18 @@
       },
       "created_at": 1754567900.911957,
       "updated_at": 1754567900.911957,
-      "id": 179
+      "id": 179,
+      "best_config_summary": {
+        "params": {
+          "n_estimators": 133,
+          "max_depth": 0.0967741935483871,
+          "learning_rate": 0.14247437424708959,
+          "subsample": 0.5390981377680806,
+          "colsample_bytree": 0.8512649010657919
+        },
+        "score": 0.9110115882215147,
+        "model_type": "xgboost"
+      }
     },
     {
       "name": "coil2000",
@@ -8462,7 +8528,18 @@
       },
       "created_at": 1754567946.719401,
       "updated_at": 1754567946.719401,
-      "id": 298
+      "id": 298,
+      "best_config_summary": {
+        "params": {
+          "n_estimators": 97,
+          "max_depth": 0.11538461538461539,
+          "learning_rate": 0.07542832788817178,
+          "subsample": 0.8947385331597324,
+          "colsample_bytree": 0.6738167152482915
+        },
+        "score": 0.7331181660096325,
+        "model_type": "xgboost"
+      }
     },
     {
       "name": "elevators",
@@ -8492,7 +8569,18 @@
       },
       "created_at": 1754568030.651982,
       "updated_at": 1754568030.651982,
-      "id": 846
+      "id": 846,
+      "best_config_summary": {
+        "params": {
+          "n_estimators": 229,
+          "max_depth": 0.6428571428571429,
+          "learning_rate": 0.11525023544977149,
+          "subsample": 0.5397188258678239,
+          "colsample_bytree": 0.8513206005444603
+        },
+        "score": 0.9345547831067627,
+        "model_type": "xgboost"
+      }
     },
     {
       "name": "jm1",
@@ -8522,7 +8610,18 @@
       },
       "created_at": 1754568061.965149,
       "updated_at": 1754568061.965149,
-      "id": 1053
+      "id": 1053,
+      "best_config_summary": {
+        "params": {
+          "n_estimators": 53,
+          "max_depth": 0.11538461538461539,
+          "learning_rate": 0.06450583869018646,
+          "subsample": 0.7568921198834208,
+          "colsample_bytree": 0.6626881544786241
+        },
+        "score": 0.7426608942142432,
+        "model_type": "xgboost"
+      }
     },
     {
       "name": "KDDCup09_churn",
@@ -8552,7 +8651,18 @@
       },
       "created_at": 1754568566.555409,
       "updated_at": 1754568566.55541,
-      "id": 1112
+      "id": 1112,
+      "best_config_summary": {
+        "params": {
+          "n_estimators": 211,
+          "max_depth": 0.0967741935483871,
+          "learning_rate": 0.02539286276222842,
+          "subsample": 0.619604349788814,
+          "colsample_bytree": 0.5504399536327814
+        },
+        "score": 0.7301646442115517,
+        "model_type": "xgboost"
+      }
     },
     {
       "name": "MagicTelescope",
@@ -8582,7 +8692,18 @@
       },
       "created_at": 1754568668.407306,
       "updated_at": 1754568668.407306,
-      "id": 1120
+      "id": 1120,
+      "best_config_summary": {
+        "params": {
+          "n_estimators": 166,
+          "max_depth": 0.5,
+          "learning_rate": 0.06342651799544538,
+          "subsample": 0.5347505119595399,
+          "colsample_bytree": 0.8183095396756759
+        },
+        "score": 0.9361837011227255,
+        "model_type": "xgboost"
+      }
     },
     {
       "name": "OVA_Breast",
@@ -8612,7 +8733,18 @@
       },
       "created_at": 1754569308.9443378,
       "updated_at": 1754569308.9443378,
-      "id": 1128
+      "id": 1128,
+      "best_config_summary": {
+        "params": {
+          "n_estimators": 46,
+          "max_depth": 0.38095238095238093,
+          "learning_rate": 0.24294722163047444,
+          "subsample": 0.7693036905845323,
+          "colsample_bytree": 0.7353621748316964
+        },
+        "score": 0.9969800569800569,
+        "model_type": "xgboost"
+      }
     },
     {
       "name": "Click_prediction_small",
@@ -8642,7 +8774,18 @@
       },
       "created_at": 1754569387.728866,
       "updated_at": 1754569387.728867,
-      "id": 1220
+      "id": 1220,
+      "best_config_summary": {
+        "params": {
+          "n_estimators": 114,
+          "max_depth": 0.1,
+          "learning_rate": 0.1641768524390971,
+          "subsample": 0.5222421165433782,
+          "colsample_bytree": 0.8585815033556576
+        },
+        "score": 0.6945461644388948,
+        "model_type": "xgboost"
+      }
     },
     {
       "name": "Satellite",
@@ -8672,7 +8815,18 @@
       },
       "created_at": 1754569393.819991,
       "updated_at": 1754569393.819991,
-      "id": 40900
+      "id": 40900,
+      "best_config_summary": {
+        "params": {
+          "n_estimators": 54,
+          "max_depth": 0.3333333333333333,
+          "learning_rate": 0.2628534593844867,
+          "subsample": 0.7159725093210578,
+          "colsample_bytree": 0.645614570099021
+        },
+        "score": 0.9925149700598803,
+        "model_type": "xgboost"
+      }
     },
     {
       "name": "road-safety",
@@ -8702,7 +8856,18 @@
       },
       "created_at": 1754570650.405899,
       "updated_at": 1754570650.4059,
-      "id": 45038
+      "id": 45038,
+      "best_config_summary": {
+        "params": {
+          "n_estimators": 239,
+          "max_depth": 0.9393939393939394,
+          "learning_rate": 0.04556254127267828,
+          "subsample": 0.8422596801893081,
+          "colsample_bytree": 0.5369528825905804
+        },
+        "score": 0.9084716182130879,
+        "model_type": "xgboost"
+      }
     }
   ],
   "created_at": 1754567567.574968,

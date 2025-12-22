@@ -7502,7 +7502,17 @@
       },
       "created_at": 1754496397.0775309,
       "updated_at": 1754496397.0775309,
-      "id": 31
+      "id": 31,
+      "best_config_summary": {
+        "params": {
+          "max_depth": 0.8421052631578947,
+          "min_samples_split": 0.11404616423235531,
+          "min_samples_leaf": 0.040455868605384616,
+          "max_features": 0.2650640588680905
+        },
+        "score": 0.7347637937252073,
+        "model_type": "decision_tree"
+      }
     },
     {
       "name": "sick",
@@ -7532,7 +7542,17 @@
       },
       "created_at": 1754496398.419633,
       "updated_at": 1754496398.419633,
-      "id": 38
+      "id": 38,
+      "best_config_summary": {
+        "params": {
+          "max_depth": 1.0,
+          "min_samples_split": 0.1413207310763852,
+          "min_samples_leaf": 0.024829756846668563,
+          "max_features": 0.8256253157019022
+        },
+        "score": 0.9525067899875211,
+        "model_type": "decision_tree"
+      }
     },
     {
       "name": "spambase",
@@ -7562,7 +7582,17 @@
       },
       "created_at": 1754496400.271033,
       "updated_at": 1754496400.271033,
-      "id": 44
+      "id": 44,
+      "best_config_summary": {
+        "params": {
+          "max_depth": 0.625,
+          "min_samples_split": 0.03782326866393347,
+          "min_samples_leaf": 0.005921378877983666,
+          "max_features": 0.9483953155172278
+        },
+        "score": 0.9650345260514751,
+        "model_type": "decision_tree"
+      }
     },
     {
       "name": "trains",
@@ -7592,7 +7622,17 @@
       },
       "created_at": 1754496400.774818,
       "updated_at": 1754496400.774818,
-      "id": 52
+      "id": 52,
+      "best_config_summary": {
+        "params": {
+          "max_depth": 0.6666666666666666,
+          "min_samples_split": 0.35695556312006227,
+          "min_samples_leaf": 0.009013976387681477,
+          "max_features": 0.9729188669457949
+        },
+        "score": 0.5,
+        "model_type": "decision_tree"
+      }
     },
     {
       "name": "electricity",
@@ -7622,7 +7662,17 @@
       },
       "created_at": 1754496411.689518,
       "updated_at": 1754496411.689518,
-      "id": 151
+      "id": 151,
+      "best_config_summary": {
+        "params": {
+          "max_depth": 0.9333333333333333,
+          "min_samples_split": 0.018732624375441407,
+          "min_samples_leaf": 0.00746329954589913,
+          "max_features": 0.6354601426448603
+        },
+        "score": 0.8770678570348235,
+        "model_type": "decision_tree"
+      }
     },
     {
       "name": "adult",
@@ -7652,7 +7702,17 @@
       },
       "created_at": 1754496422.714483,
       "updated_at": 1754496422.714483,
-      "id": 179
+      "id": 179,
+      "best_config_summary": {
+        "params": {
+          "max_depth": 0.22580645161290322,
+          "min_samples_split": 0.14702324423761123,
+          "min_samples_leaf": 0.0065160463326058415,
+          "max_features": 0.8975245729210809
+        },
+        "score": 0.8776064620958685,
+        "model_type": "decision_tree"
+      }
     },
     {
       "name": "coil2000",
@@ -7682,7 +7742,17 @@
       },
       "created_at": 1754496425.8686762,
       "updated_at": 1754496425.8686762,
-      "id": 298
+      "id": 298,
+      "best_config_summary": {
+        "params": {
+          "max_depth": 0.8076923076923077,
+          "min_samples_split": 0.10435996002226194,
+          "min_samples_leaf": 0.02976204458021192,
+          "max_features": 0.5658599872885779
+        },
+        "score": 0.7003650864462794,
+        "model_type": "decision_tree"
+      }
     },
     {
       "name": "elevators",
@@ -7712,7 +7782,17 @@
       },
       "created_at": 1754496430.191127,
       "updated_at": 1754496430.191127,
-      "id": 846
+      "id": 846,
+      "best_config_summary": {
+        "params": {
+          "max_depth": 0.2857142857142857,
+          "min_samples_split": 0.06299293350979358,
+          "min_samples_leaf": 0.007712122307000321,
+          "max_features": 0.7593233358969649
+        },
+        "score": 0.8230887335431284,
+        "model_type": "decision_tree"
+      }
     },
     {
       "name": "jm1",
@@ -7742,7 +7822,17 @@
       },
       "created_at": 1754496433.319166,
       "updated_at": 1754496433.319166,
-      "id": 1053
+      "id": 1053,
+      "best_config_summary": {
+        "params": {
+          "max_depth": 0.5384615384615384,
+          "min_samples_split": 0.04811658948073526,
+          "min_samples_leaf": 0.059271157157711515,
+          "max_features": 0.9470578053784916
+        },
+        "score": 0.728064137756889,
+        "model_type": "decision_tree"
+      }
     },
     {
       "name": "KDDCup09_churn",
@@ -7772,7 +7862,17 @@
       },
       "created_at": 1754496457.7180831,
       "updated_at": 1754496457.7180831,
-      "id": 1112
+      "id": 1112,
+      "best_config_summary": {
+        "params": {
+          "max_depth": 0.4838709677419355,
+          "min_samples_split": 0.11807646931094534,
+          "min_samples_leaf": 0.01768117618477052,
+          "max_features": 0.5936998252792712
+        },
+        "score": 0.679612106123806,
+        "model_type": "decision_tree"
+      }
     },
     {
       "name": "MagicTelescope",
@@ -7802,7 +7902,17 @@
       },
       "created_at": 1754496463.794374,
       "updated_at": 1754496463.794374,
-      "id": 1120
+      "id": 1120,
+      "best_config_summary": {
+        "params": {
+          "max_depth": 0.39285714285714285,
+          "min_samples_split": 0.015217517791886131,
+          "min_samples_leaf": 0.005559855151614354,
+          "max_features": 0.8055876855804922
+        },
+        "score": 0.8901109719802553,
+        "model_type": "decision_tree"
+      }
     },
     {
       "name": "OVA_Breast",
@@ -7832,7 +7942,17 @@
       },
       "created_at": 1754496791.096004,
       "updated_at": 1754496791.096004,
-      "id": 1128
+      "id": 1128,
+      "best_config_summary": {
+        "params": {
+          "max_depth": 0.7142857142857143,
+          "min_samples_split": 0.20985351024305976,
+          "min_samples_leaf": 0.09665038964884702,
+          "max_features": 0.9423674126588466
+        },
+        "score": 0.9575213675213676,
+        "model_type": "decision_tree"
+      }
     },
     {
       "name": "Click_prediction_small",
@@ -7862,7 +7982,17 @@
       },
       "created_at": 1754496800.880556,
       "updated_at": 1754496800.880556,
-      "id": 1220
+      "id": 1220,
+      "best_config_summary": {
+        "params": {
+          "max_depth": 0.5666666666666667,
+          "min_samples_split": 0.06563279446244152,
+          "min_samples_leaf": 0.015294196157214425,
+          "max_features": 0.604365691322633
+        },
+        "score": 0.6543743769716699,
+        "model_type": "decision_tree"
+      }
     },
     {
       "name": "Satellite",
@@ -7892,7 +8022,17 @@
       },
       "created_at": 1754496802.664979,
       "updated_at": 1754496802.664979,
-      "id": 40900
+      "id": 40900,
+      "best_config_summary": {
+        "params": {
+          "max_depth": 0.625,
+          "min_samples_split": 0.0783519917195005,
+          "min_samples_leaf": 0.06196820646436754,
+          "max_features": 0.4297256589643226
+        },
+        "score": 0.9403138168108228,
+        "model_type": "decision_tree"
+      }
     },
     {
       "name": "road-safety",
@@ -7922,7 +8062,17 @@
       },
       "created_at": 1754496833.3989701,
       "updated_at": 1754496833.3989701,
-      "id": 45038
+      "id": 45038,
+      "best_config_summary": {
+        "params": {
+          "max_depth": 0.30303030303030304,
+          "min_samples_split": 0.030538497719362432,
+          "min_samples_leaf": 0.011948295447793644,
+          "max_features": 0.47568749489993056
+        },
+        "score": 0.8103627259702212,
+        "model_type": "decision_tree"
+      }
     }
   ],
   "created_at": 1754496396.166046,

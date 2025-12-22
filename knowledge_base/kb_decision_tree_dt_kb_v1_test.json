@@ -488,7 +488,17 @@
       },
       "created_at": 1754494208.756428,
       "updated_at": 1754494208.756428,
-      "id": 31
+      "id": 31,
+      "best_config_summary": {
+        "params": {
+          "max_depth": 0.8947368421052632,
+          "min_samples_split": 0.18088778982145076,
+          "min_samples_leaf": 0.038205553486735044,
+          "max_features": 0.727440308506085
+        },
+        "score": 0.7396321673278038,
+        "model_type": "decision_tree"
+      }
     },
     {
       "name": "sick",
@@ -518,7 +528,17 @@
       },
       "created_at": 1754494209.74388,
       "updated_at": 1754494209.74388,
-      "id": 38
+      "id": 38,
+      "best_config_summary": {
+        "params": {
+          "max_depth": 0.8260869565217391,
+          "min_samples_split": 0.2277594467865226,
+          "min_samples_leaf": 0.03853826442999343,
+          "max_features": 0.998163029709255
+        },
+        "score": 0.9764919621228805,
+        "model_type": "decision_tree"
+      }
     }
   ],
   "created_at": 1754494207.977014,

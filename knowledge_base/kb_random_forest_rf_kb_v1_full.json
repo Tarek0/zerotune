@@ -8282,7 +8282,18 @@
       },
       "created_at": 1754578300.226271,
       "updated_at": 1754578300.226271,
-      "id": 31
+      "id": 31,
+      "best_config_summary": {
+        "params": {
+          "n_estimators": 130,
+          "max_depth": 0.5789473684210527,
+          "min_samples_split": 0.03796772384175501,
+          "min_samples_leaf": 0.012478325983434617,
+          "max_features": 0.8758869230598374
+        },
+        "score": 0.8117562206996034,
+        "model_type": "random_forest"
+      }
     },
     {
       "name": "sick",
@@ -8312,7 +8323,18 @@
       },
       "created_at": 1754578317.0129359,
       "updated_at": 1754578317.0129359,
-      "id": 38
+      "id": 38,
+      "best_config_summary": {
+        "params": {
+          "n_estimators": 210,
+          "max_depth": 0.4782608695652174,
+          "min_samples_split": 0.088889257109027,
+          "min_samples_leaf": 0.016458094564506927,
+          "max_features": 0.885839903177259
+        },
+        "score": 0.9899985318945901,
+        "model_type": "random_forest"
+      }
     },
     {
       "name": "spambase",
@@ -8342,7 +8364,18 @@
       },
       "created_at": 1754578390.7644072,
       "updated_at": 1754578390.7644072,
-      "id": 44
+      "id": 44,
+      "best_config_summary": {
+        "params": {
+          "n_estimators": 211,
+          "max_depth": 0.625,
+          "min_samples_split": 0.020637747334969703,
+          "min_samples_leaf": 0.010090757384877153,
+          "max_features": 0.8528503708233249
+        },
+        "score": 0.9689555265826453,
+        "model_type": "random_forest"
+      }
     },
     {
       "name": "trains",
@@ -8372,7 +8405,18 @@
       },
       "created_at": 1754578394.021725,
       "updated_at": 1754578394.021726,
-      "id": 52
+      "id": 52,
+      "best_config_summary": {
+        "params": {
+          "n_estimators": 100,
+          "max_depth": 1.0,
+          "min_samples_split": 0.14907884894416698,
+          "min_samples_leaf": 0.06187255599871847,
+          "max_features": 0.5764491338167939
+        },
+        "score": 0.0,
+        "model_type": "random_forest"
+      }
     },
     {
       "name": "electricity",
@@ -8402,7 +8446,18 @@
       },
       "created_at": 1754578581.821683,
       "updated_at": 1754578581.821683,
-      "id": 151
+      "id": 151,
+      "best_config_summary": {
+        "params": {
+          "n_estimators": 55,
+          "max_depth": 0.43333333333333335,
+          "min_samples_split": 0.020197590917280413,
+          "min_samples_leaf": 0.011774233727714264,
+          "max_features": 0.7624460145480063
+        },
+        "score": 0.8857701654245825,
+        "model_type": "random_forest"
+      }
     },
     {
       "name": "adult",
@@ -8432,7 +8487,18 @@
       },
       "created_at": 1754578682.330485,
       "updated_at": 1754578682.330485,
-      "id": 179
+      "id": 179,
+      "best_config_summary": {
+        "params": {
+          "n_estimators": 83,
+          "max_depth": 0.5806451612903226,
+          "min_samples_split": 0.01048306057700571,
+          "min_samples_leaf": 0.005441986850247328,
+          "max_features": 0.7794057388112984
+        },
+        "score": 0.8985847054720026,
+        "model_type": "random_forest"
+      }
     },
     {
       "name": "coil2000",
@@ -8462,7 +8528,18 @@
       },
       "created_at": 1754578747.111083,
       "updated_at": 1754578747.111083,
-      "id": 298
+      "id": 298,
+      "best_config_summary": {
+        "params": {
+          "n_estimators": 96,
+          "max_depth": 0.8846153846153846,
+          "min_samples_split": 0.07540363653422684,
+          "min_samples_leaf": 0.021762662179093922,
+          "max_features": 0.738424483015112
+        },
+        "score": 0.7328017881041907,
+        "model_type": "random_forest"
+      }
     },
     {
       "name": "elevators",
@@ -8492,7 +8569,18 @@
       },
       "created_at": 1754578841.59104,
       "updated_at": 1754578841.59104,
-      "id": 846
+      "id": 846,
+      "best_config_summary": {
+        "params": {
+          "n_estimators": 200,
+          "max_depth": 0.8571428571428571,
+          "min_samples_split": 0.01143406126471204,
+          "min_samples_leaf": 0.012709961323367009,
+          "max_features": 0.5173322746049769
+        },
+        "score": 0.8565781848997891,
+        "model_type": "random_forest"
+      }
     },
     {
       "name": "jm1",
@@ -8522,7 +8610,18 @@
       },
       "created_at": 1754578896.330963,
       "updated_at": 1754578896.330963,
-      "id": 1053
+      "id": 1053,
+      "best_config_summary": {
+        "params": {
+          "n_estimators": 27,
+          "max_depth": 0.7692307692307693,
+          "min_samples_split": 0.04684970254245677,
+          "min_samples_leaf": 0.04309179257696369,
+          "max_features": 0.8319427767400975
+        },
+        "score": 0.7392716826725966,
+        "model_type": "random_forest"
+      }
     },
     {
       "name": "KDDCup09_churn",
@@ -8552,7 +8651,18 @@
       },
       "created_at": 1754580567.211307,
       "updated_at": 1754580567.211307,
-      "id": 1112
+      "id": 1112,
+      "best_config_summary": {
+        "params": {
+          "n_estimators": 244,
+          "max_depth": 0.7096774193548387,
+          "min_samples_split": 0.07069765391977778,
+          "min_samples_leaf": 0.00670637818340785,
+          "max_features": 0.5071115987712252
+        },
+        "score": 0.7135446634632112,
+        "model_type": "random_forest"
+      }
     },
     {
       "name": "MagicTelescope",
@@ -8582,7 +8692,18 @@
       },
       "created_at": 1754580697.9042208,
       "updated_at": 1754580697.9042208,
-      "id": 1120
+      "id": 1120,
+      "best_config_summary": {
+        "params": {
+          "n_estimators": 55,
+          "max_depth": 0.39285714285714285,
+          "min_samples_split": 0.010644549605505055,
+          "min_samples_leaf": 0.010026610322266531,
+          "max_features": 0.941428369320887
+        },
+        "score": 0.90290254186024,
+        "model_type": "random_forest"
+      }
     },
     {
       "name": "OVA_Breast",
@@ -8612,7 +8733,18 @@
       },
       "created_at": 1754596941.416337,
       "updated_at": 1754596941.416337,
-      "id": 1128
+      "id": 1128,
+      "best_config_summary": {
+        "params": {
+          "n_estimators": 90,
+          "max_depth": 0.7142857142857143,
+          "min_samples_split": 0.08695386930634799,
+          "min_samples_leaf": 0.00930774470100457,
+          "max_features": 0.8782427660662351
+        },
+        "score": 0.9940170940170939,
+        "model_type": "random_forest"
+      }
     },
     {
       "name": "Click_prediction_small",
@@ -8642,7 +8774,18 @@
       },
       "created_at": 1754597097.087069,
       "updated_at": 1754597097.087069,
-      "id": 1220
+      "id": 1220,
+      "best_config_summary": {
+        "params": {
+          "n_estimators": 183,
+          "max_depth": 0.8,
+          "min_samples_split": 0.05640730546831422,
+          "min_samples_leaf": 0.01289298207957437,
+          "max_features": 0.7457658357736073
+        },
+        "score": 0.6686358306030729,
+        "model_type": "random_forest"
+      }
     },
     {
       "name": "Satellite",
@@ -8672,7 +8815,18 @@
       },
       "created_at": 1754597128.281944,
       "updated_at": 1754597128.281944,
-      "id": 40900
+      "id": 40900,
+      "best_config_summary": {
+        "params": {
+          "n_estimators": 48,
+          "max_depth": 0.875,
+          "min_samples_split": 0.1683915319039488,
+          "min_samples_leaf": 0.005145963955297317,
+          "max_features": 0.9491946512423292
+        },
+        "score": 0.9963406520292748,
+        "model_type": "random_forest"
+      }
     },
     {
       "name": "road-safety",
@@ -8702,7 +8856,18 @@
       },
       "created_at": 1754597956.231133,
       "updated_at": 1754597956.231133,
-      "id": 45038
+      "id": 45038,
+      "best_config_summary": {
+        "params": {
+          "n_estimators": 202,
+          "max_depth": 0.36363636363636365,
+          "min_samples_split": 0.020337848077246923,
+          "min_samples_leaf": 0.009522854765853501,
+          "max_features": 0.6090085699589383
+        },
+        "score": 0.8277026223765448,
+        "model_type": "random_forest"
+      }
     }
   ],
   "created_at": 1754578293.318401,
