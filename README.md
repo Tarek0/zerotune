@@ -36,6 +36,7 @@ print(f"Optimal hyperparameters: {best_params}")
 - **🔬 Scientifically Validated**: 50-seed evaluation across diverse datasets with statistical rigor
 - **🚀 Production Ready**: Pre-trained models included - no training required
 - **🔧 Optuna Integration**: Warm-start TPE optimization with perfect baseline consistency
+- **🧠 LLM-Enhanced HPO** (Optional): Sequential optimization using GPT models as surrogate functions
 
 ## 🎯 Supported Models
 
@@ -57,6 +58,9 @@ curl -sSL https://install.python-poetry.org | python3 -
 git clone https://github.com/your-repo/zerotune.git
 cd zerotune
 poetry install
+
+# Optional: For LLM Surrogate features
+pip install langchain langchain-openai python-dotenv
 ```
 
 🚀 **Ready-to-Use**: All trained models are included - start predicting immediately!
@@ -170,6 +174,58 @@ poetry run python publication_analysis.py XGBoost --auto-detect
 ```
 
 See [PUBLICATION_CHARTS_GUIDE.md](PUBLICATION_CHARTS_GUIDE.md) for detailed documentation.
+
+## 🧠 LLM Surrogate HPO (Experimental)
+
+For users who want **sequential HPO with LLM reasoning** instead of zero-shot prediction. Uses GPT models as surrogate functions to recommend hyperparameters based on trial history.
+
+### Quick Start
+
+```python
+from zerotune.core.llm_surrogate import LLMSurrogateSampler
+from zerotune.core.optimization import optimize_hyperparameters
+import optuna
+
+# Create LLM-based sampler
+sampler = LLMSurrogateSampler(
+    model_type='decision_tree',
+    X=X, y=y,
+    kb_path='knowledge_base/kb_decision_tree_dt_kb_v1_full.json',
+    llm_model='gpt-4o-mini',
+    n_zerotune_initial=1,  # Start with ZeroTune prediction
+    n_random_initial=5,     # Then random exploration
+)
+
+# Run optimization with Optuna
+study = optuna.create_study(direction='maximize', sampler=sampler)
+study.optimize(objective, n_trials=20)
+```
+
+### Key Features
+
+- **4-Config Batching**: Each LLM call returns exploit, explore_mild, explore_aggressive, and wildcard configs
+- **Expert Param Guides**: Action-oriented tuning rules for Decision Tree, Random Forest, XGBoost
+- **Hybrid Approach**: ZeroTune warm-start → random exploration → LLM reasoning
+- **Strict JSON Mode**: Reliable structured outputs with schema validation
+
+### Installation
+
+```bash
+# Additional dependencies for LLM features
+pip install langchain langchain-openai python-dotenv
+
+# Set your OpenAI API key
+export OPENAI_API_KEY="your-key-here"
+```
+
+### Benchmark Results (10 datasets, Decision Tree)
+
+| Comparison | Win Rate |
+|------------|----------|
+| LLM vs Random | **60%** |
+| LLM vs TPE | **50%** |
+
+*LLM achieves highest mean score across all datasets with ~160s per optimization.*
 
 ## 🛠️ Advanced Usage
 
