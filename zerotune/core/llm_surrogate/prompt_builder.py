@@ -210,6 +210,7 @@ Provide step-by-step reasoning, then your recommended hyperparameters."""
         search_space: dict,
         completed_trials: list,
         zt_prior: Optional[dict] = None,
+        kb_confidence: Optional[float] = None,
     ) -> str:
         """
         Build prompt for sequential recommendation based on trial history.
@@ -219,6 +220,7 @@ Provide step-by-step reasoning, then your recommended hyperparameters."""
             search_space: Optuna search space or parameter grid
             completed_trials: List of completed Optuna trials
             zt_prior: Optional ZeroTune zero-shot prediction
+            kb_confidence: Optional confidence score (0-1) based on KB similarity
             
         Returns:
             Formatted prompt string
@@ -229,6 +231,10 @@ Provide step-by-step reasoning, then your recommended hyperparameters."""
             self.kb_path,
             n_similar=self.n_similar_datasets
         )
+        
+        # Compute KB confidence from similar datasets if not provided
+        if kb_confidence is None and similar:
+            kb_confidence = max(d['similarity'] for d in similar)
         
         # Find best score
         best_score = max(t.value for t in completed_trials) if completed_trials else 0.0
@@ -245,6 +251,7 @@ Provide step-by-step reasoning, then your recommended hyperparameters."""
         n_samples = meta_features.get('n_samples', 0)
         cond_stats_str = self._format_conditional_stats(n_samples)
         corr_str = self._format_correlations(meta_features)
+        strategy_str = self._format_strategy_recommendation(kb_confidence)
         
         # Build prompt by concatenation to avoid format() issues
         prompt = f"""You are an expert ML practitioner optimizing hyperparameters for a {model_class}.
@@ -274,6 +281,8 @@ Best score so far: {best_score:.4f}
 
 ## Similar Datasets from Knowledge Base
 {similar_str}
+
+{strategy_str}
 
 ## Task
 Based on the observed trial results and expert knowledge above, recommend FOUR diverse configurations:
@@ -436,4 +445,27 @@ Provide all four recommendations with brief reasoning for each."""
                     implication = "lower" if val > 0 else "higher"
                 # lines.append(f"  -> Your {mf}={val:.2f}, suggesting {implication} {param}")
                 
+        return "\n".join(lines)
+
+    def _format_strategy_recommendation(self, kb_confidence: Optional[float]) -> str:
+        """Format strategy recommendation based on KB confidence."""
+        if kb_confidence is None:
+            return ""
+        
+        lines = [f"## Recommended Strategy (KB Confidence: {kb_confidence:.2f})"]
+        
+        if kb_confidence >= 0.85:
+            lines.append("**HIGH CONFIDENCE**: Your dataset is very similar to those in the knowledge base.")
+            lines.append("- Prioritize **EXPLOIT**: The KB patterns are likely reliable for your dataset.")
+            lines.append("- Use EXPLORE configurations as secondary options to refine near-optimal regions.")
+        elif kb_confidence >= 0.60:
+            lines.append("**MODERATE CONFIDENCE**: Your dataset has some similarity to the knowledge base.")
+            lines.append("- Balance **EXPLOIT** and **EXPLORE_MILD**: Refine based on trials, but stay open to adjustments.")
+            lines.append("- KB patterns provide useful guidance but may need adaptation.")
+        else:
+            lines.append("**LOW CONFIDENCE**: Your dataset differs significantly from the knowledge base.")
+            lines.append("- Prioritize **EXPLORE**: Cast a wider net since historical patterns may not apply.")
+            lines.append("- Give more weight to **WILDCARD** configurations to discover novel good regions.")
+            lines.append("- Rely more on trial observations than KB priors.")
+        
         return "\n".join(lines)

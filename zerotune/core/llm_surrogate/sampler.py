@@ -384,12 +384,18 @@ class LLMSurrogateSampler(BaseSampler):
             })
             return params_dict
         
+        # Compute KB confidence for strategy recommendation
+        from zerotune.core.llm_surrogate.retrieval import retrieve_similar_datasets
+        similar = retrieve_similar_datasets(self._meta_features, self._kb_path, n_similar=3)
+        kb_confidence = max(d['similarity'] for d in similar) if similar else 0.0
+        
         # Call LLM to get all 4 recommendations
         prompt = self._prompt_builder.build_sequential_prompt(
             meta_features=self._meta_features,
             search_space=search_space,
             completed_trials=completed_trials,
             zt_prior=zt_prior,
+            kb_confidence=kb_confidence,
         )
         
         response: HPORecommendation = self._structured_llm_sequential.invoke(prompt)
@@ -424,6 +430,7 @@ class LLMSurrogateSampler(BaseSampler):
             'reasoning': response.exploit.reasoning,
             'params': exploit_params,
             'confidence': response.exploit.confidence,
+            'kb_confidence': kb_confidence,
             'batch_cached': ['explore_mild', 'explore_aggressive', 'wildcard'],
         })
         
