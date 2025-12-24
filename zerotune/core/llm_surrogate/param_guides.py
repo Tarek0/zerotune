@@ -32,13 +32,19 @@ IMPORTANT: Only recommend hyperparameters that exist in the provided Search Spac
 4) min_samples_split (secondary; keep consistent with leaf size)
 - Interaction rule: enforce min_samples_split >= 2 * min_samples_leaf when both are in the search space.
 
+5) criterion (splitting metric) - IMPORTANT: explore BOTH values
+- "gini" (default): Gini impurity, slightly faster, works well in most cases.
+- "entropy": Information gain, can be better for imbalanced datasets or when classes have different feature distributions.
+- CRITICAL: Always try BOTH criterion values early in optimization. In ~30% of datasets, entropy significantly outperforms gini.
+- If imbalance_ratio > 2 or avg_target_corr is low: start with entropy.
+
 ### Imbalance heuristic (if class_weight exists in the Search Space)
 - If Class imbalance ratio is meaningfully > 1, try class_weight="balanced" early.
 
 ### Meta-feature conditioned defaults (for FIRST trial)
-- small (< 1000): smaller max_depth, larger min_samples_leaf (or small >0 ccp_alpha)
-- medium (1000–10000): moderate depth, min_samples_leaf around 5–20 depending on noise
-- large (>=10000): can allow deeper trees, but still avoid tiny leaves if signal is noisy
+- small (< 1000): max_depth=3-6, larger min_samples_leaf (10-20), try entropy first
+- medium (1000–10000): max_depth=5-10, min_samples_leaf around 5–15
+- large (>=10000): max_depth=8-15, but still avoid tiny leaves if signal is noisy
 
 ### What to do based on observed trials
 - Overfitting signs (best score occurs with simpler trees): increase min_samples_leaf and/or ccp_alpha; optionally reduce max_depth.

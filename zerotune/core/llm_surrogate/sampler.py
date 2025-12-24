@@ -60,10 +60,7 @@ class LLMSurrogateSampler(BaseSampler):
             temperature: LLM temperature (default: 1.0 for gpt-5-nano, can use 0.0 for other models)
             seed: Random seed for fallback sampling
             n_zerotune_initial: Number of initial trials using ZeroTune prediction (default: 0).
-                Set to 1+ to warm-start with ZeroTune's zero-shot prediction.
-                Set to 0 to skip ZeroTune and start with LLM or random.
             n_random_initial: Number of trials using random sampling for exploration (default: 0).
-                Provides diverse starting points before LLM sequential optimization.
         """
         self._meta_features = meta_features
         self._kb_path = kb_path
@@ -243,14 +240,12 @@ class LLMSurrogateSampler(BaseSampler):
         trial: FrozenTrial,
     ) -> dict[str, BaseDistribution]:
         """Infer the search space from the study."""
-        # Get completed trials from the study
         completed_trials = [
             t for t in study.trials
             if t.state == TrialState.COMPLETE
         ]
         
         if not completed_trials:
-            # No completed trials yet, return empty (will use sample_independent)
             return {}
         
         return optuna.search_space.intersection_search_space(completed_trials)
@@ -276,10 +271,8 @@ class LLMSurrogateSampler(BaseSampler):
         Returns:
             Dictionary of sampled parameter values
         """
-        # Get completed trials
         n_completed = len([t for t in study.trials if t.state == TrialState.COMPLETE])
         
-        # Determine which phase we're in
         phase1_end = self._n_zerotune_initial
         phase2_end = phase1_end + self._n_random_initial
         
@@ -289,7 +282,6 @@ class LLMSurrogateSampler(BaseSampler):
             if zt_params is not None:
                 validated = self._validate_params(zt_params, search_space)
                 return validated
-            # Fall through to Phase 2 or 3 if ZeroTune fails
         
         # Phase 2: Random exploration
         if n_completed < phase2_end:
@@ -310,13 +302,9 @@ class LLMSurrogateSampler(BaseSampler):
         
         try:
             if len(completed_trials) == 0:
-                # No history yet - use LLM initial recommendation
-                # Pass ZeroTune prediction as prior if available
                 zt_params = self._get_zerotune_prediction()
                 params = self._recommend_initial(simple_search_space, zt_prior=zt_params)
             else:
-                # Sequential: LLM reasons based on full history
-                # Pass ZeroTune prediction as prior if available
                 zt_params = self._get_zerotune_prediction()
                 params = self._recommend_next(simple_search_space, completed_trials, zt_prior=zt_params)
             
@@ -341,13 +329,9 @@ class LLMSurrogateSampler(BaseSampler):
             zt_prior=zt_prior,
         )
         
-        # Call LLM with structured output
         response: InitialRecommendation = self._structured_llm_initial.invoke(prompt)
-        
-        # Convert hyperparameters to dict
         params_dict = response.hyperparameters.model_dump()
         
-        # Store reasoning
         self.reasoning_history.append({
             'trial': 0,
             'type': 'initial',
@@ -363,9 +347,7 @@ class LLMSurrogateSampler(BaseSampler):
     def _recommend_next(self, search_space: dict, completed_trials: list, zt_prior: Optional[dict] = None) -> dict:
         """Get sequential recommendation from LLM based on trial history.
         
-        Uses batch strategy (4 configs per LLM call):
-        - On LLM call: Returns exploit, caches explore_mild, explore_aggressive, wildcard
-        - On subsequent 3 trials: Returns cached configs without LLM call
+        Uses batch strategy: 4 configs per LLM call (exploit, explore_mild, explore_aggressive, wildcard).
         """
         n_completed = len(completed_trials)
         
@@ -406,7 +388,7 @@ class LLMSurrogateSampler(BaseSampler):
         explore_aggressive_params = response.explore_aggressive.hyperparameters.model_dump()
         wildcard_params = response.wildcard.hyperparameters.model_dump()
         
-        # Cache the next 3 configs (explore_mild, explore_aggressive, wildcard)
+        # Cache the next 3 configs
         self._pending_configs = [
             {'type': 'explore_mild', 'params': explore_mild_params, 
              'reasoning': response.explore_mild.reasoning, 'confidence': response.explore_mild.confidence},
@@ -465,30 +447,25 @@ class LLMSurrogateSampler(BaseSampler):
         
         for name, dist in search_space.items():
             if name not in params:
-                # Parameter missing - sample randomly
                 validated[name] = self._sample_random(dist)
                 continue
             
             value = params[name]
             
             if isinstance(dist, FloatDistribution):
-                # Clip to bounds
                 value = float(value)
                 value = max(dist.low, min(dist.high, value))
                 validated[name] = value
                 
             elif isinstance(dist, IntDistribution):
-                # Clip to bounds and convert to int
                 value = int(round(float(value)))
                 value = max(dist.low, min(dist.high, value))
                 validated[name] = value
                 
             elif isinstance(dist, CategoricalDistribution):
-                # Check if value is valid choice
                 if value in dist.choices:
                     validated[name] = value
                 else:
-                    # Try to find closest match or use random
                     validated[name] = self._rng.choice(dist.choices)
             else:
                 validated[name] = value
